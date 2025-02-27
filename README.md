@@ -33,3 +33,9 @@ This is a RAG application backend for Bridge-X (A Social / E-Learning Platform F
     ```bash
     uv run uvicorn api.main:app --reload --port 8000 --host 0.0.0.0
     ```
+
+### (Optional) Setup you command line interface for better readability
+
+```bash
+export PS1="\[\033[01;32m\]\u@\h:\w\n\[\033[00m\]\$ "
+```
