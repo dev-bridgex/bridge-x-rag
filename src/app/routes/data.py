@@ -58,7 +58,7 @@ async def upload_data(
         )
     
     return JSONResponse(
-        status_code=status.HTTP_,
+        status_code=status.HTTP_201_CREATED,
         content={
             "signal": ResponseSignal.FILE_UPLOAD_SUCCESS.value,
             "file_id": file_id
