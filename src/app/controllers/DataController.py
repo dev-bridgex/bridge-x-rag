@@ -1,6 +1,5 @@
 from fastapi import UploadFile
 from .BaseController import BaseController
-from .ProjectController import ProjectController
 from models import ResponseSignal
 import re
 import os
@@ -20,10 +19,7 @@ class DataController(BaseController):
         
         return True, ResponseSignal.FILE_VALIDATED_SUCCESS.value
     
-    def generate_unique_filepath(self, project_id: str, original_file_name: str):
-        
-        # get a path for project directory to save the project files in
-        project_path = ProjectController().get_project_path(project_id=project_id)
+    def generate_unique_filepath(self, project_path: str, original_file_name: str):
         
         random_key = self.generate_random_string()
         cleaned_file_name = self.get_clean_file_name(orig_file_name=original_file_name)
