@@ -1,0 +1,14 @@
+services:
+  mongodb:
+    image: bitnami/mongodb:8.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongodb:/data/db
+    networks:
+      - bridgex-rag
+    restart: always
+  
+networks:
+  bridgex-rag:
