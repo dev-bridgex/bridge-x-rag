@@ -1,15 +1,23 @@
 from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException
-from helpers.config import get_settings, Settings
-from controllers import DataController, ProcessController, ProjectController
-from models import ResponseSignal
-from .schemas.data import ProcessRequest
+
+from app.helpers.config import get_settings, Settings
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.dependencies.database import get_database
+from app.dependencies.api_key import get_api_key
+
+from .schemes.data import ProcessRequest
+from app.models import ResponseSignal
+from app.models.ProjectModel import ProjectModel
+
+from app.controllers import DataController, ProcessController, ProjectController
 
 import aiofiles
 import logging
+import os
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger()
 
 
 data_router = APIRouter(
@@ -22,61 +30,81 @@ process_controller = ProcessController()
 project_controller = ProjectController()
 
 
-@data_router.post("/upload/{project_id}", status_code=status.HTTP_201_CREATED)
+@data_router.post("/upload/{project_id}", 
+                 status_code=status.HTTP_201_CREATED,
+                 description="Upload a file to a specific project")
 async def upload_data(
-    project_id: str, file: UploadFile, 
-    app_settings: Settings = Depends(get_settings)
+    project_id: str, 
+    file: UploadFile, 
+    # api_key: str = Depends(get_api_key),
+    app_settings: Settings = Depends(get_settings),
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
+    # Validate the file properties - will raise HTTPException if invalid
+    data_controller.validate_uploaded_file(file=file)
     
-    # Validate the file properties and return a signal if not valid
-    is_valid, result_signal = data_controller.validate_uploaded_file(file=file)
-    
-    if not is_valid:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"signal": result_signal}
+    # Get or create project in database
+    project_model = ProjectModel(db_client=db)
+    try:
+        project = await project_model.get_project_or_create_one(project_id=project_id)
+    except Exception as e:
+        logger.error(f"Database error creating project: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
         )
     
-    
-    # get a file path in the project directory(project_id) and a unique file name(id) 
-    project_path = project_controller.get_project_path(project_id=project_id)
+    # Get or create project directory
+    project_dir_path = project_controller.get_project_path(project_id=project_id)
     
     file_path, file_id = data_controller.generate_unique_filepath(
-        project_path=project_path,
+        project_path=project_dir_path,
         original_file_name=file.filename
     )
     
-    
     # Save File in project path
     try:
-        # 1)Opens the destination file asynchronously 
+        # Opens the destination file asynchronously 
         async with aiofiles.open(file=file_path, mode="wb") as f:
             # Reads the uploaded file in chunks
             while chunk := await file.read(app_settings.FILE_DEFAULT_CHUNK_SIZE):
-                # write the chunk in the distination file f
+                # write the chunk in the destination file f
                 await f.write(chunk)
+                
+        # Log successful upload
+        logger.info(f"File {file_id} successfully uploaded to project {project_id}")
                 
     except Exception as e:
         logger.error(f"Error while uploading file: {e}")
         
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "signal": ResponseSignal.FILE_UPLOAD_FAILED.value
-            }
+        # Try to clean up the file if it was partially written
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as cleanup_error:
+            logger.error(f"Failed to clean up file after upload error: {cleanup_error}")
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading file: {str(e)}"
         )
-    
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content={
-            "signal": ResponseSignal.FILE_UPLOAD_SUCCESS.value,
-            "file_id": file_id
-        }
-    )
-    
+        
 
-@data_router.post("/process/{project_id}")
-async def process_data(project_id: str, process_request: ProcessRequest):
+
+@data_router.post("/process/{project_id}", 
+                 description="Process a file in a specific project")
+async def process_data(
+    project_id: str, 
+    process_request: ProcessRequest, 
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    # extract file_processing request details
+    file_id = process_request.file_id
+    chunk_size = process_request.chunk_size
+    overlap_size = process_request.overlap_size
+    do_reset = process_request.do_reset
+    
+    project_model = ProjectModel(db_client=db)
     
     # check project with id exists
     project_path = project_controller.find_project_path(project_id=project_id)
@@ -84,32 +112,39 @@ async def process_data(project_id: str, process_request: ProcessRequest):
     if project_path is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with id: {project_id} dosn't exist!"
+            detail=f"Project with id: {project_id} not found"
         )
         
     # check file exist in the project path
-    file_path = process_controller.get_file_path( file_id=process_request.file_id, project_path=project_path )
+    file_path = process_controller.get_file_path(file_id=file_id, project_path=project_path)
     
     if file_path is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"File with id: {process_request.file_id} dosn't exist in the Project With id: {project_id}"
+            detail=f"File with id: {file_id} not found in project: {project_id}"
         )
     
-    # Process requested file in the refrenced project                                               
-    file_content = process_controller.get_file_content( file_id=process_request.file_id, file_path=file_path)
+    # Process requested file in the referenced project                                               
+    file_content = process_controller.get_file_content(file_id=file_id, file_path=file_path)
     
-    file_chunks = process_controller.process_file_content( file_content = file_content,
-        file_id = process_request.file_id,
-        chunk_size = process_request.chunk_size,
-        overlap_size = process_request.overlap_size
+    file_chunks = process_controller.process_file_content(
+        file_content=file_content,
+        file_id=file_id,
+        chunk_size=chunk_size,
+        overlap_size=overlap_size
     )
     
     if file_chunks is None or len(file_chunks) == 0:
-        return JSONResponse(
+        raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"signal": ResponseSignal.PROCESSING_FAILED.value}   
+            detail="Failed to process file content"
         )
 
-    return file_chunks
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "signal": ResponseSignal.PROCESSING_SUCCESS.value,
+            "chunks": file_chunks
+        }
+    )
 
