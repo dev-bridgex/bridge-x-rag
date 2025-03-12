@@ -18,8 +18,27 @@ class Settings(BaseSettings):
     FILE_MAX_SIZE: int
     FILE_DEFAULT_CHUNK_SIZE: int
     
-    MONGODB_URL: str
-    MONGODB_DATABASE: str
+    # MongoDB Config
+    MONGO_URI: str
+    MONGO_URL: str
+    MONGO_USER: str
+    MONGO_PASSWORD: str
+    MAX_DB_CONN_COUNT: int
+    MIN_DB_CONN_COUNT: int
+    MONGO_DB: str
+    
+    # JWT Settings
+    SECRET_KEY: str = "your-secret-key-here"  # In production, use a secure random key
+    REFRESH_SECRET_KEY: str = "your-refresh-secret-key-here"  # Different key for refresh tokens
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # JWE Encryption Settings
+    ENCRYPTION_KEY: str = "32-byte-key-for-encryption-----"  # Base64 encoded key
+    ENCRYPTION_ALGORITHM: str = "A256KW"  # Key wrapping algorithm
+    ENCRYPTION_METHOD: str = "A256CBC-HS512"  # Content encryption algorithm
+
     
     
 def get_settings():
