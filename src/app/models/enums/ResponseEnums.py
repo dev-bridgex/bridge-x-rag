@@ -10,4 +10,12 @@ class ResponseSignal(Enum):
     
     PROCESSING_SUCCESS = "processing_success"
     PROCESSING_FAILED = "processing_failed"
+    
+    PROJECT_NOT_FOUND = "project_not_found"
+    FILE_NOT_FOUND = "file_not_found"
+    INVALID_REQUEST = "invalid_request"
+    DATABASE_ERROR = "database_error"
+    VALIDATION_ERROR = "validation_error"
+    SERVICE_UNAVAILABLE = "service_unavailable"
+    RESOURCE_CONFLICT = "resource_conflict"
 

@@ -1,5 +1,5 @@
 from .BaseController import BaseController
-from models import FileTypes
+from app.models import FileTypes
 import os
 from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
 from langchain_core.documents import Document
