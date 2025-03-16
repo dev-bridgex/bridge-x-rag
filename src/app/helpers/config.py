@@ -19,13 +19,13 @@ class Settings(BaseSettings):
     FILE_DEFAULT_CHUNK_SIZE: int
     
     # MongoDB Config
-    MONGO_URI: str
-    MONGO_URL: str
-    MONGO_USER: str
-    MONGO_PASSWORD: str
+    MONGODB_HOST: str
+    MONGODB_PORT: str
+    MONGODB_USERNAME: str
+    MONGODB_PASSWORD: str
+    MONGODB_DATABASE: str
     MAX_DB_CONN_COUNT: int
     MIN_DB_CONN_COUNT: int
-    MONGO_DB: str
     
     # JWT Settings
     SECRET_KEY: str = "your-secret-key-here"  # In production, use a secure random key
