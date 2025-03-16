@@ -171,6 +171,7 @@ dependencies = [
     { name = "langchain-community" },
     { name = "motor" },
     { name = "pydantic-settings" },
+    { name = "pymongo" },
     { name = "pymupdf" },
 ]
 
@@ -182,6 +183,7 @@ requires-dist = [
     { name = "langchain-community", specifier = ">=0.3.18" },
     { name = "motor", specifier = ">=3.7.0" },
     { name = "pydantic-settings", specifier = ">=2.8.0" },
+    { name = "pymongo", specifier = ">=4.11.2" },
     { name = "pymupdf", specifier = ">=1.25.3" },
 ]
 
