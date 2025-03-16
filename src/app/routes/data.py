@@ -9,12 +9,16 @@ from app.dependencies.database import get_database
 from .schemas.data import ProcessRequest
 from app.models import ResponseSignal
 from app.models.ProjectModel import ProjectModel
+from app.models.ChunkModel import ChunkModel
+from app.models.db_schemas import DataChunk
 
 from app.controllers import DataController, ProcessController, ProjectController
 
+from langchain_core.documents import Document
 import aiofiles
 import logging
 import os
+
 
 logger = logging.getLogger("uvicorn.info")
 
@@ -103,16 +107,15 @@ async def upload_data(
 async def process_data(
     project_id: str, 
     process_request: ProcessRequest, 
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    
 ):
     # extract file_processing request details
     file_id = process_request.file_id
     chunk_size = process_request.chunk_size
     overlap_size = process_request.overlap_size
     do_reset = process_request.do_reset
-    
-    project_model = ProjectModel(db_client=db)
-    
+        
     # check project with id exists
     project_path = project_controller.find_project_path(project_id=project_id)
     
@@ -134,7 +137,7 @@ async def process_data(
     # Process requested file in the referenced project                                               
     file_content = process_controller.get_file_content(file_id=file_id, file_path=file_path)
     
-    file_chunks = process_controller.process_file_content(
+    file_chunks: list[Document] = process_controller.process_file_content(
         file_content=file_content,
         file_id=file_id,
         chunk_size=chunk_size,
@@ -146,12 +149,51 @@ async def process_data(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to process file content"
         )
+        
+    # Get Project From MongoDB Project Collection
+    
+    project_model = ProjectModel(db_client=db)
+    try:
+        project = await project_model.get_project_or_create_one(project_id=project_id)
+    except Exception as e:
+        logger.error(f"Database error creating project: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
+    
+    
+    # Save Proccessed File's Chunks Documents Into MongoDB Chunks Collection
+    
+    file_chunks_records: list[Document] = [
+        DataChunk(
+            chunk_text=chunk.page_content,
+            chunk_metadata=chunk.metadata,
+            chunk_order=idx+1,
+            chunk_project_id=project.id
+        )
+        for idx, chunk in enumerate(file_chunks)
+    ]
+     
+    chunk_model = ChunkModel(db_client=db)
+    
+    ### >>> Will Need To Fix this delete later
+    if do_reset == 1:
+        _ = await chunk_model.delete_chunks_by_project_id(
+            project_id=project.id
+        )
 
+    no_records = await chunk_model.insert_many_chunks(
+        chunks=file_chunks_records
+        )
+    
+    
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         content={
             "signal": ResponseSignal.PROCESSING_SUCCESS.value,
-            "chunks": file_chunks
+            "inserted_chunks": no_records
         }
     )
+
 
