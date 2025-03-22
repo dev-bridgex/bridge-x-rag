@@ -1,5 +1,5 @@
 from .BaseController import BaseController
-from app.models import FileTypes
+from app.models import FileTypesEnum
 import os
 from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
 from langchain_core.documents import Document
@@ -12,38 +12,35 @@ class ProcessController(BaseController):
         super().__init__()
 
 
-    def get_file_extension(self, file_id: str):
-        return os.path.splitext(file_id)[-1]
+    def get_file_extension(self, file_name: str):
+        return os.path.splitext(file_name)[-1]
     
-    def get_file_path(self, file_id: str, project_path: str):
-        file_path = os.path.join( project_path, file_id )
-        if not os.path.exists(file_path):
-            return None
-        return file_path
+    def get_file_path(self, file_name: str, project_path: str):
+        return os.path.join( project_path, file_name )
     
     
-    def get_file_loader(self, file_id: str, file_path: str):
+    def get_file_loader(self, file_name: str, file_path: str):
         
-        file_extension = self.get_file_extension(file_id=file_id)
+        file_extension = self.get_file_extension(file_name=file_name)
         
-        if file_extension == FileTypes.TXT.value:
+        if file_extension == FileTypesEnum.TXT.value:
             return TextLoader(file_path, encoding="utf-8")
         
-        if file_extension == FileTypes.PDF.value:
+        if file_extension == FileTypesEnum.PDF.value:
             return PyMuPDFLoader(file_path)
         
         return None
     
     
-    def get_file_content(self, file_id: str, file_path: str) -> list[Document]:
-        loader = self.get_file_loader(file_id=file_id, file_path=file_path)
+    def get_file_content(self, file_name: str, file_path: str) -> list[Document]:
+        loader = self.get_file_loader(file_name=file_name, file_path=file_path)
         return loader.load()
         
     
     def process_file_content(
         self, 
         file_content: list[Document],
-        file_id: str,
+        file_name: str,
         chunk_size: int=100,
         overlap_size: int=20        
         ):
