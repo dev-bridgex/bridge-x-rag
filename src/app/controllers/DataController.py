@@ -1,7 +1,5 @@
-from fastapi import UploadFile, HTTPException
-from fastapi import status
+from fastapi import UploadFile, status, HTTPException
 from .BaseController import BaseController
-from app.models import ResponseSignal
 import re
 import os
 import logging
@@ -50,9 +48,10 @@ class DataController(BaseController):
         
         random_key = self.generate_random_string()
         cleaned_file_name = self.get_clean_file_name(orig_file_name=original_file_name)
+        new_file_name = random_key + "_" + cleaned_file_name
         
         new_file_path = os.path.join(
-            project_path, random_key + "_" + cleaned_file_name
+            project_path, new_file_name
         )
         
         while os.path.exists(new_file_path):
@@ -61,7 +60,7 @@ class DataController(BaseController):
                 project_path, random_key + "_" + cleaned_file_name
             )
         
-        return new_file_path, random_key + "_" + cleaned_file_name
+        return new_file_path, new_file_name
         
    
     
