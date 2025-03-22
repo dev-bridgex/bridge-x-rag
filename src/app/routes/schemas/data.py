@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator, ValidationInfo
 from typing import Optional
 
 class ProcessRequest(BaseModel):
-    file_id: str = Field(..., min_length=1)
+    file_name: str = None
     chunk_size: Optional[int] = Field(100, gt=0, le=1000)
     overlap_size: Optional[int] = Field(20, ge=0, lt=1000)
     do_reset: Optional[int] = Field(0, ge=0, le=1)

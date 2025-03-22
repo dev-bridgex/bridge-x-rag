@@ -29,7 +29,9 @@ async def lifespan(app: FastAPI):
         await connect_and_init_db()
         
         module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
+        
         yield  # This is where FastAPI serves requests
+        
     except Exception as e:
         module_logger.error(f"Error during startup: {str(e)}", exc_info=True)
         raise
