@@ -2,53 +2,38 @@ from .BaseDataModel import BaseDataModel
 from app.models.db_schemas import Project
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from .enums.DataBaseEnum import DataBaseEnum
+from typing import List, Tuple
 
-class ProjectModel(BaseDataModel):
-    def __init__(self, db_client: AsyncIOMotorDatabase):
-        super().__init__(db_client=db_client)
-        self.collection = self.db_client[DataBaseEnum.COLLECTION_PROJECT_NAME.value]
-        
+class ProjectModel(BaseDataModel[Project]):
+    def __init__(self, db_client: AsyncIOMotorDatabase, collection_name=None):
+        super().__init__(db_client=db_client, collection_name=collection_name or DataBaseEnum.COLLECTION_PROJECT_NAME.value)
     
+    def get_collection_name(self):
+        return DataBaseEnum.COLLECTION_PROJECT_NAME.value
+    
+    def get_schema_model(self):
+        return Project
+
     async def create_project(self, project: Project):
-        result = await self.collection.insert_one(project.model_dump(by_alias=True, exclude_unset=True))
-        project.id = result.inserted_id
-        
-        return project
+        """Create a new Project """
+        return await self.create(project)
     
+    async def get_project_by_name(self, project_name: str):
+        """Search for a project by name"""
+        return await self.find_one({"project_name": project_name})
     
-    async def get_project_or_create_one(self, project_id: str):
-        record = await self.collection.find_one(
-            {"project_id": project_id}
-        )
+    async def get_all_projects(self, page: int=1, page_size: int=10) -> Tuple[List[Project], int]:
+        """Get all projects with pagination"""
+        # Calculate skip value
+        skip = (page - 1) * page_size
         
-        if record is None:
-            # Create New Project
-            new_project = Project(project_id=project_id)
-            new_project = await self.create_project(project=new_project)
-            
-            return new_project
+        # Count total documents for pagination
+        total_documents = await self.count_documents({})
         
-        return Project(**record)
-    
-    async def get_all_projects(self,page: int=1, page_size: int=10):
+        # Calculate total pages
+        total_pages = (total_documents + page_size - 1) // page_size
         
-        # count total number of documents( projects )
-        total_documents = await self.collection.count_documents({})
+        # Get projects for the current page
+        projects = await self.find_many({}, skip=skip, limit=page_size)
         
-        # calculate total number of pages
-        total_pages = total_documents // page_size
-        if total_pages % page_size > 0:
-            total_pages += 1 
-        
-        # fetch page records from database
-        # using a cursor for memory effeciency to load the db documents (projects) one by one
-        
-        cursor = self.collection.find().skip( (page-1) * page_size ).limit(page_size)    
-        
-        projects = []
-        async for document in cursor:
-            projects.append(
-                Project(**document)
-            )
-
         return projects, total_pages

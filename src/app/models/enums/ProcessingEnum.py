@@ -1,6 +1,6 @@
 from enum import Enum
 
-class FileTypes(Enum):
+class FileTypesEnum(Enum):
     
     TXT = ".txt"
     PDF = ".pdf"
