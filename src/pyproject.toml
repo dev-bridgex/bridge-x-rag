@@ -6,10 +6,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "aiofiles>=24.1.0",
+    "cohere>=5.14.0",
     "fastapi[standard]>=0.115.8",
     "langchain>=0.3.19",
     "langchain-community>=0.3.18",
     "motor>=3.7.0",
+    "openai>=1.68.2",
     "pydantic-settings>=2.8.0",
     "pymongo>=4.11.2",
     "pymupdf>=1.25.3",
