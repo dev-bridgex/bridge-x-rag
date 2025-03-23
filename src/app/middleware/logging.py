@@ -1,6 +1,6 @@
 import time
 from fastapi import Request
-from app.core.logging import get_logger
+from app.logging import get_logger
 
 # Get a dedicated logger for the middleware
 logger = get_logger(__name__)
