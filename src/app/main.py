@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager
 from app.routes import base, data
 from app.helpers.config import get_files_dir, get_settings
 from app.db.mongodb import connect_and_init_db, close_db_connection
-from app.core.logging import setup_logging, get_logger
+from app.logging import setup_logging, get_logger
 import logging
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.logging import logging_middleware
 # from app.exception_handlers import http_exception_handler, validation_exception_handler
+from app.stores.llm.LLMProviderFactory import LLMProviderFactory
+
 
 # Initialize application settings
 app_settings = get_settings()
@@ -28,6 +30,20 @@ async def lifespan(app: FastAPI):
         module_logger.info("Initializing database connection...")
         await connect_and_init_db()
         
+        # Startup: set generation client
+        llm_provider_factory = LLMProviderFactory(config = app_settings)
+        
+        app.generation_client = llm_provider_factory.create( rovider=app_settings.GENERATION_BACKEND )
+        app.generation_client.set_generation_model( model_id=app_settings.GENERATION_MODEL_ID )
+        
+        # set embedding client
+        
+        app.embedding_client = llm_provider_factory.create( provider=app_settings.EMBEDDING_BACKEND )
+        app.embedding_client.set_embedding_model(
+            model_id=app_settings.EMBEDDING_MODEL_ID, embedding_size=app_settings.EMBEDDING_MODEL_SIZE
+            )
+
+
         module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
         
         yield  # This is where FastAPI serves requests
@@ -44,6 +60,8 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             module_logger.error(f"Error during shutdown: {str(e)}", exc_info=True)
 
+
+
 app = FastAPI(
     lifespan=lifespan,
     title=app_settings.APP_NAME,
@@ -51,13 +69,17 @@ app = FastAPI(
     version=app_settings.APP_VERSION,
 )
 
+
 # Register exception handlers
 # app.add_exception_handler(HTTPException, http_exception_handler)
 # app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
+
+
 # Register app routers
 app.include_router(base.base_router)
 app.include_router(data.data_router)
+
 
 # CORS Middleware
 app.add_middleware(
@@ -68,7 +90,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Request Logging Middleware - Uncomment to enable request logging
 app.middleware("http")(logging_middleware)
+
 
 module_logger.info(f"Application initialized and ready to handle requests")
