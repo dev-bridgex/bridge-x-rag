@@ -2,14 +2,20 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from app.routes import base, data
-from app.helpers.config import get_files_dir, get_settings
+
+from app.helpers.config import get_settings, init_database_dir, init_files_dir
 from app.db.mongodb import connect_and_init_db, close_db_connection
+
 from app.logging import setup_logging, get_logger
 import logging
 from fastapi.middleware.cors import CORSMiddleware
-from app.middleware.logging import logging_middleware
+from app.middleware.logging_middleware import logging_middleware
 # from app.exception_handlers import http_exception_handler, validation_exception_handler
-from app.stores.llm.LLMProviderFactory import LLMProviderFactory
+
+from app.stores.llm import LLMProviderFactory
+from app.stores.vectordb import VectorDBProviderFactory
+
+from app.testing_vectordb import test_qdrant
 
 
 # Initialize application settings
@@ -23,29 +29,41 @@ module_logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     try:
         # Startup: Create files directory (will store projects in) in the assets directory
-        files_dir = get_files_dir()
+        files_dir = init_files_dir()
+        database_dir = init_database_dir()
         module_logger.info(f"Files directory initialized at: {files_dir}")
+        module_logger.info(f"Database directory initialized at: {database_dir}")
         
         # Startup: Connect to the database
         module_logger.info("Initializing database connection...")
         await connect_and_init_db()
         
-        # Startup: set generation client
+        # initialize providers
         llm_provider_factory = LLMProviderFactory(config = app_settings)
+        vectordb_provider_factory = VectorDBProviderFactory(config = app_settings)
         
-        app.generation_client = llm_provider_factory.create( rovider=app_settings.GENERATION_BACKEND )
-        app.generation_client.set_generation_model( model_id=app_settings.GENERATION_MODEL_ID )
+        # init Generation client
+        app.generation_client= llm_provider_factory.create(provider=app_settings.GENERATION_BACKEND)
+        app.generation_client.set_generation_model(model_id=app_settings.GENERATION_MODEL_ID)
         
-        # set embedding client
-        
+        # init Embedding client
         app.embedding_client = llm_provider_factory.create( provider=app_settings.EMBEDDING_BACKEND )
         app.embedding_client.set_embedding_model(
             model_id=app_settings.EMBEDDING_MODEL_ID, embedding_size=app_settings.EMBEDDING_MODEL_SIZE
             )
-
-
-        module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
         
+        # init Vector Db client
+        
+        app.vectordb_client = vectordb_provider_factory.create(
+            provider = app_settings.VECTOR_DB_BACKEND
+        )
+        
+        # testing qdrant vector database
+        await test_qdrant(app.vectordb_client)
+        
+        module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
+
+
         yield  # This is where FastAPI serves requests
         
     except Exception as e:
@@ -96,3 +114,4 @@ app.middleware("http")(logging_middleware)
 
 
 module_logger.info(f"Application initialized and ready to handle requests")
+
