@@ -15,7 +15,6 @@ from app.controllers import DataController, ProcessController, ProjectController
 
 from langchain_core.documents import Document
 import aiofiles
-import logging
 import os
 from datetime import datetime, timezone
 

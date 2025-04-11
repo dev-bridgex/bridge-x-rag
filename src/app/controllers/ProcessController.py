@@ -41,8 +41,8 @@ class ProcessController(BaseController):
         self, 
         file_content: list[Document],
         file_name: str,
-        chunk_size: int=100,
-        overlap_size: int=20        
+        chunk_size: int=600,
+        overlap_size: int=100        
         ):
         
         
@@ -56,13 +56,15 @@ class ProcessController(BaseController):
             for document in file_content
         ]
         
+        # Improved splitter with paragraph and sentence awareness
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=overlap_size,
+            separators=["\n\n", "\n", ".", "!", "?", " ", ""],  # favors paragraph/sentence endings
             length_function=len,
-            is_separator_regex=False,
+            is_separator_regex=False
         )
-        
+
         chunks = text_splitter.create_documents(
             file_content_texts,
             metadatas=file_content_metadatas

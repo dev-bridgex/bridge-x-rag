@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
-from app.routes import base, data
+from app.routes import base, data, nlp
 
 from app.helpers.config import get_settings, init_database_dir, init_files_dir
 from app.db.mongodb import connect_and_init_db, close_db_connection
@@ -58,13 +58,13 @@ async def lifespan(app: FastAPI):
             provider = app_settings.VECTOR_DB_BACKEND
         )
         
-        # testing qdrant vector database
-        await test_qdrant(app.vectordb_client)
-        
-        module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
-
-
-        yield  # This is where FastAPI serves requests
+        # Uses async context manager (__aenter__ / __aexit__) to connect to the vector db client    
+        async with app.vectordb_client:
+            # test vector db client 
+            # await test_qdrant(app.vectordb_client)
+             
+            module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
+            yield  # This is where FastAPI serves requests
         
     except Exception as e:
         module_logger.error(f"Error during startup: {str(e)}", exc_info=True)
@@ -97,6 +97,7 @@ app = FastAPI(
 # Register app routers
 app.include_router(base.base_router)
 app.include_router(data.data_router)
+app.include_router(nlp.nlp_router)
 
 
 # CORS Middleware
