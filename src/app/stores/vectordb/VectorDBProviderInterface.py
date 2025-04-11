@@ -21,7 +21,7 @@ class VectorDBProviderInterface(ABC):
         pass
     
     @abstractmethod
-    def get_collection_info(self, collection_name: str) -> dict:
+    def get_collection_info(self, collection_name: str) -> dict | None:
         pass
     
     @abstractmethod
@@ -42,7 +42,7 @@ class VectorDBProviderInterface(ABC):
         self,
         collection_name: str,
         text: str,
-        vector: list,
+        vector: List[float],
         metadata: dict = None,
         record_id: str = None
     ) -> bool:
@@ -53,10 +53,10 @@ class VectorDBProviderInterface(ABC):
     def insert_many(
         self,
         collection_name: str,
-        texts: list[str],
-        vectors:  list[list],
-        metadatas: list[dict | None] = None,
-        record_ids: list = None,
+        texts: List[str],
+        vectors:  List[List[float]],
+        metadatas: List[dict] = None,
+        record_ids: List = None,
         batch_size: int = 64
     ) -> bool:
         
@@ -66,9 +66,9 @@ class VectorDBProviderInterface(ABC):
     def search_by_vector(
         self,
         collection_name: str,
-        vector: list,
+        vector: List[float],
         limit: int = 5
-    ) -> list:
+    ) -> List:
         
         pass 
     

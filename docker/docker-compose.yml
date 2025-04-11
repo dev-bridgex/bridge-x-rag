@@ -1,13 +1,13 @@
 services:
   mongodb:
-    image: bitnami/mongodb:8.0
+    image: docker.io/bitnami/mongodb:8.0
     container_name: mongodb
     ports:
       - "27017:27017"
     volumes:
       - ./mongodb/initdb.d/init-mongo.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
       - mongodb-data:/bitnami/mongodb
-      - mongodb-log:/pot/bitnami/mongodb/logs
+      - mongodb-log:/opt/bitnami/mongodb/logs
     networks:
       - bridgex-rag
     env_file:

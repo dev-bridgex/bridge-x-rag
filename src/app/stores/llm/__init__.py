@@ -1,1 +1,2 @@
+from .LLMProviderInterface import LLMProviderInterface
 from .LLMProviderFactory import LLMProviderFactory

@@ -10,6 +10,8 @@ from app.stores.vectordb.VectorDBEnums import DistanceMethodEnum
 from app.logging import get_logger
 # from logging import getLogger
 from typing import Optional, List, Union, Dict, Any
+from app.models.db_schemas.data_chunk import RetrievedDocument
+
 
 class QdrantDBProvider(VectorDBProviderInterface):
     """Asynchronous provider for interacting with Qdrant."""
@@ -209,7 +211,7 @@ class QdrantDBProvider(VectorDBProviderInterface):
 
             if collection_already_exists:
                  self.logger.warning(f"Collection '{collection_name}' already exists and reset=False. Creation skipped.")
-                 return False
+                 return True # simulate the creation of a new collection by returning True
 
             # Proceed with creation
             self.logger.info(f"Creating new collection: {collection_name}")
@@ -386,21 +388,15 @@ class QdrantDBProvider(VectorDBProviderInterface):
             if not results:
                 self.logger.debug(f"No results found for search in '{collection_name}'.")
                 return None
-
-            # output = []
-            # for point in results.points:
-            #      text_payload = point.payload.get("text") if point.payload else None
-            #      output.append({
-            #         "id": point.id,
-            #         "score": point.score,
-            #         "text": text_payload,
-            #         # "payload": point.payload # Optionally include full payload
-            #      })
-                 
-            # self.logger.debug(f"Found {len(output)} results for search in '{collection_name}'.")
             
-            return results
-
+            return [
+                RetrievedDocument(**{
+                    "text": point.payload.get("text"),
+                    "score": point.score
+                })
+                for point in results.points
+            ]
+            
         except Exception as e:
             self.logger.error(f"Error during vector search in '{collection_name}': {e}", exc_info=True)
             return None
