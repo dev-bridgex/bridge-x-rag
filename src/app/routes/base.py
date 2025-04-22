@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from app.helpers.config import get_settings, Settings
 
 base_router = APIRouter(
-    prefix="/api/v1",
-    tags=["api_v1"],
+    prefix="/api",
+    # tags=["api_v1"],
 )
 
 @base_router.get("/")
