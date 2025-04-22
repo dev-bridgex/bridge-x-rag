@@ -3,7 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from app.helpers.config import get_settings
 from fastapi import HTTPException
 from urllib.parse import quote_plus
-from app.core.logging import get_logger
+from app.logging import get_logger
 
 # Get a logger specific to this module
 logger = get_logger(__name__)
@@ -21,7 +21,7 @@ logger.debug(f"MongoDB connection string (redacted): {safe_url}")
 db_client: AsyncIOMotorClient = None
 
 
-async def get_db() -> AsyncIOMotorDatabase:
+async def get_database() -> AsyncIOMotorDatabase:
     """
     Returns the database instance.
     Raises HTTPException if the database client is not initialized.

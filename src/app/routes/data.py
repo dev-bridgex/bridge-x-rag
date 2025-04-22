@@ -4,7 +4,8 @@ from fastapi.exceptions import HTTPException
 
 from app.helpers.config import get_settings, Settings
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.dependencies.database import get_database
+from app.db.mongodb import get_database
+from app.logging import get_logger
 
 from .schemas.data import ProcessRequest
 from app.models import ResponseSignalEnum, FileTypesEnum, ProjectModel, AssetModel, ChunkModel
@@ -19,7 +20,7 @@ import os
 from datetime import datetime, timezone
 
 
-logger = logging.getLogger("uvicorn.error")
+logger = get_logger(__name__)
 
 
 data_router = APIRouter(
