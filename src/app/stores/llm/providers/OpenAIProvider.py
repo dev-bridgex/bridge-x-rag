@@ -2,6 +2,7 @@ from ..LLMProviderInterface import LLMProviderInterface
 from ..LLMEnums import OpenAIEnum
 from openai import OpenAI
 from app.logging import get_logger
+from typing import List, Union
 
 
 class OpenAIProvider(LLMProviderInterface):
@@ -86,7 +87,7 @@ class OpenAIProvider(LLMProviderInterface):
         return response.choices[0].message.content
     
     
-    def embed_text(self, text: str, document_type: str = None):
+    def embed_text(self, text: Union[str, List[str]], document_type: str = None):
         
         if not self.client:
             self.logger.error("OpenAI client was not set")
@@ -105,7 +106,7 @@ class OpenAIProvider(LLMProviderInterface):
             self.logger.error("Error while embedding text with OpenAI")
             return None
         
-        return response.data[0].embedding
+        return [ rec.embedding for rec in response.data ]
     
     
         
