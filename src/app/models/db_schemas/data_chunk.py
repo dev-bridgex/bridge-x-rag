@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 # from odmantic import ObjectId
 from bson.objectid import ObjectId
@@ -12,8 +12,7 @@ class DataChunk(BaseModel):
     chunk_knowledge_base_id: ObjectId
     chunk_asset_id: ObjectId
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def get_indexes(cls):

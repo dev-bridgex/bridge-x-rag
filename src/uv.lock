@@ -180,6 +180,7 @@ dependencies = [
     { name = "pytz" },
     { name = "qdrant-client" },
     { name = "tdqm" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -197,6 +198,7 @@ requires-dist = [
     { name = "pytz", specifier = ">=2025.2" },
     { name = "qdrant-client", specifier = ">=1.13.3" },
     { name = "tdqm", specifier = ">=0.0.1" },
+    { name = "uvicorn", specifier = ">=0.29.0" },
 ]
 
 [[package]]

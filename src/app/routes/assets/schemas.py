@@ -144,7 +144,7 @@ class KnowledgeBaseProcessRequest(BaseModel):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "chunk_size": 500,
                 "overlap_size": 50,
@@ -200,7 +200,7 @@ class AssetProcessRequest(BaseModel):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "chunk_size": 500,
                 "overlap_size": 50,
@@ -238,7 +238,7 @@ class AssetProcessResponse(BaseResponse):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "processed_files": 1,
                 "inserted_chunks": 42,

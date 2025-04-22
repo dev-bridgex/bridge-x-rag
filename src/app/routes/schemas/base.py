@@ -12,7 +12,7 @@ class BaseResponse(BaseModel):
     """
     pass
 
-class PaginatedResponse(Generic[T], BaseModel):
+class PaginatedResponse(BaseModel, Generic[T]):
     """Base paginated response model"""
     items: List[T] = Field(..., description="List of items")
     page_number: int = Field(..., description="Current page number")
