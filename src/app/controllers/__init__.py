@@ -1,5 +1,4 @@
 from .BaseController import BaseController
-from .DataController import DataController
-from .ProjectController import ProjectController
-from .ProcessController import ProcessController
+from .KnowledgeBaseController import KnowledgeBaseController
 from .NLPController import NLPController
+from .AssetController import AssetController
