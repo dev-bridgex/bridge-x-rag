@@ -1,15 +1,27 @@
-# MongoDB with Docker Compose Setup
+# MongoDB Configuration for Bridge-X-RAG
 
-A step-by-step guide to running MongoDB using Docker Compose .
+This guide explains how to set up and configure MongoDB for the Bridge-X-RAG application using Docker Compose.
+
+## Overview
+
+The Bridge-X-RAG application uses MongoDB as its primary database for storing:
+
+- Knowledge base metadata
+- Asset information
+- Document chunks for retrieval
+- User data and authentication information
 
 ## Prerequisites
-1. Docker installed (`sudo apt install docker.io`)
-2. Docker Compose installed (`sudo apt install docker-compose`)
-3. Basic terminal knowledge
 
-## Setup Instructions
+- Docker Engine (20.10.0+)
+- Docker Compose (v2.0.0+)
+- Basic terminal/command line knowledge
 
-### 1. Create docker-compose file like the following:
+## Configuration
+
+### Docker Compose Configuration
+
+The following Docker Compose configuration is used for MongoDB:
 
 ```yaml
 version: '3.7'
@@ -22,7 +34,7 @@ services:
     volumes:
       - ./mongodb/initdb.d/init-mongo.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
       - mongodb-data:/bitnami/mongodb
-      - mongodb-log:/pot/bitnami/mongodb/logs
+      - mongodb-log:/opt/bitnami/mongodb/logs
     networks:
       - bridgex-rag
     env_file:
@@ -34,18 +46,8 @@ services:
       - MONGODB_PASSWORD=${MONGODB_PASSWORD}
       - MONGODB_DATABASE=${MONGODB_DATABASE}
       - MONGODB_EXTRA_FLAGS=--wiredTigerCacheSizeGB=2
-
-
-    ## These Following Command Override Dosn't Work With Bitnami Images
-    # command:
-    #   - --storageEngine
-    #   - wiredTiger
-    #   - --auth
-    #   - '--logpath'
-    #   - '/var/log/mongodb/mongod.log'
-
     restart: always
-  
+
 networks:
   bridgex-rag:
 
@@ -54,65 +56,140 @@ volumes:
     driver: local
   mongodb-log:
     driver: local
-
 ```
 
-### 2. Create an init-mongo.js with the following content :
+### Environment Variables
 
+Create a `.env` file in the root directory with the following MongoDB configuration:
 
-``` javascript
+```
+# MongoDB Configuration
+MONGODB_ROOT_USER=admin
+MONGODB_ROOT_PASSWORD=secure_admin_password
+MONGODB_USERNAME=bridge_x_user
+MONGODB_PASSWORD=secure_user_password
+MONGODB_DATABASE=bridge_x_rag
+```
+
+### Database Initialization Script
+
+Create an initialization script at `mongodb/initdb.d/init-mongo.js`:
+
+```javascript
 // Switch to admin database and authenticate
 db = db.getSiblingDB("admin");
-db.auth('admin', 'admin'); // Requires admin user with proper privileges [[9]]
+db.auth(process.env.MONGODB_ROOT_USER, process.env.MONGODB_ROOT_PASSWORD);
 
-// Switch to target database
-db = db.getSiblingDB('your database name');
+// Switch to application database
+db = db.getSiblingDB(process.env.MONGODB_DATABASE);
 
-// Create user with proper syntax (role as string)
+// Create application user
 db.createUser({
-    user: "your yousername",
-    pwd: "your password",
+    user: process.env.MONGODB_USERNAME,
+    pwd: process.env.MONGODB_PASSWORD,
     roles: [
-      'readWrite' // Role format simplified [[1]][[3]][[7]]
+      'readWrite'
     ]
 });
 
-// Create collection (requires valid user permissions)
-db.createCollection('test_docker');
+// Create collections for the application
+db.createCollection('knowledge_bases');
+db.createCollection('assets');
+db.createCollection('chunks');
 ```
 
-### 3. Run docker-compose to start running the container:
+## Setup Instructions
 
-``` bash
-docker-compose down && docker-compose build --no-cache && docker-compose up -d
+### 1. Start MongoDB Container
+
+```bash
+# Navigate to the directory containing docker-compose.yml
+cd /path/to/bridge-x-rag
+
+# Start the MongoDB container
+docker-compose up -d mongodb
 ```
 
-### 4. To check everything is working, SSH into the MongoDB container like the following:
+### 2. Verify MongoDB Connection
 
-``` bash
-# to SSH into the container
-docker exec -it mongodb_contaner bash
+```bash
+# Connect to the MongoDB container
+docker exec -it mongodb bash
 
+# Check MongoDB version
 mongod --version
 
-# Check admin db connection is working or not
-mongosh admin -u root -p
+# Connect to MongoDB with authentication
+mongosh admin -u $MONGODB_ROOT_USER -p $MONGODB_ROOT_PASSWORD
 
-# check default database with newly created by init-mongo.js
-show dbs
-``` 
+# Switch to application database
+use bridge_x_rag
 
-
-### 5. Take a backup from server and apply the dump in your local docker container:
-
-cp the dump file inside the container:
-
-``` bash 
-docker cp /home/shaikh/projects/vadio_dump/staging/staging_dump_march_5th_2025.dump d7f4b709158e:/backup.dump
+# List collections
+show collections
 ```
 
-### 6. Restore inside docker
+## Database Backup and Restore
 
-``` bash
-docker exec -it d7f4b709158e mongorestore --gzip --archive=/backup.dump --nsInclude=vadio-staging.* --drop
+### Creating a Backup
+
+```bash
+# Create a backup of the entire database
+docker exec -it mongodb mongodump --uri="mongodb://$MONGODB_USERNAME:$MONGODB_PASSWORD@localhost:27017/$MONGODB_DATABASE" --gzip --archive=/tmp/bridge_x_rag_backup.gz
+
+# Copy the backup file to the host machine
+docker cp mongodb:/tmp/bridge_x_rag_backup.gz ./backups/
 ```
+
+### Restoring from a Backup
+
+```bash
+# Copy the backup file to the container
+docker cp ./backups/bridge_x_rag_backup.gz mongodb:/tmp/
+
+# Restore the database
+docker exec -it mongodb mongorestore --uri="mongodb://$MONGODB_USERNAME:$MONGODB_PASSWORD@localhost:27017/$MONGODB_DATABASE" --gzip --archive=/tmp/bridge_x_rag_backup.gz --drop
+```
+
+## MongoDB Schema
+
+The Bridge-X-RAG application uses the following collections:
+
+1. **knowledge_bases**: Stores metadata about knowledge bases
+2. **assets**: Stores information about uploaded documents
+3. **chunks**: Stores text chunks extracted from documents
+
+Each collection has indexes defined in the corresponding model files in the application code.
+
+## Troubleshooting
+
+### Connection Issues
+
+If you encounter connection issues:
+
+1. Verify the MongoDB container is running:
+   ```bash
+   docker ps | grep mongodb
+   ```
+
+2. Check MongoDB logs:
+   ```bash
+   docker logs mongodb
+   ```
+
+3. Verify environment variables are correctly set in the `.env` file
+
+### Data Persistence
+
+MongoDB data is persisted in a Docker volume. To reset the database completely:
+
+```bash
+docker-compose down -v
+docker-compose up -d mongodb
+```
+
+## Integration with Bridge-X-RAG
+
+The application connects to MongoDB using the configuration specified in the `.env` file. The connection is managed by the `db/mongodb.py` module, which establishes a connection pool and provides access to the database throughout the application.
+
+The modular architecture uses MongoDB for all persistent storage needs, with each module (Knowledge Base, Asset, NLP) interacting with its respective collections through model classes that inherit from `BaseDataModel`.
