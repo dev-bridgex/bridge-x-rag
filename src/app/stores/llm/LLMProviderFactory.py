@@ -20,7 +20,7 @@ class LLMProviderFactory:
         if provider == LLMProviderEnum.COHERE.value:
             return CohereProvider(
                 api_key = self.config.COHERE_API_KEY,
-                cohere_api_version = self.config.COHERE_API_VESION,
+                cohere_api_version = self.config.COHERE_API_VERSION,
                 default_input_max_characters = self.config.INPUT_DAFAULT_MAX_CHARACTERS,
                 default_generation_max_output_tokens = self.config.GENERATION_DAFAULT_MAX_TOKENS,
                 default_generation_temperature = self.config.GENERATION_DAFAULT_TEMPERATURE

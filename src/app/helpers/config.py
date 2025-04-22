@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     
     GENERATION_BACKEND: str
     EMBEDDING_BACKEND: str
-    COHERE_API_VESION: int = 1
+    COHERE_API_VERSION: int = 1
     
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_API_URL: Optional[str] = None

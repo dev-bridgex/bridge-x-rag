@@ -13,9 +13,9 @@ class Project(BaseModel):
        
     @field_validator('project_name')
     @classmethod
-    def validator_project_id(cls, value):
-        if not value.isalnum():
-            raise ValueError('project_name must be alphanumeric')
+    def validator_project_id(cls, value: str):
+        if not value.isascii():
+            raise ValueError('project_name must contain ascii characters only')
         return value
     
     

@@ -100,11 +100,11 @@ class CohereProvider(LLMProviderInterface):
             
     def embed_text(self, text: str, document_type: str = None):
 
-        if not self.client_v1 or not self.client_v2:
+        if not self.client_v1 and not self.client_v2:
             self.logger.error("Cohere client was not set")
             return None
         
-        if not self.generation_model_id:
+        if not self.embedding_model_id:
             self.logger.error("Embedding model for Cohere was not set")
             return None
         
@@ -112,12 +112,21 @@ class CohereProvider(LLMProviderInterface):
         if document_type == DocumentTypeEnum.QUERY:
             input_type = CohereAPIv2Enum.InputTypes.value.QUERY.value
         
-        response = self.client_v1.embed(
-            model = self.embedding_model_id,
-            texts = [self.process_text(text)],
-            input_type = input_type,
-            embedding_types = ['float']
-        )
+        if self.cohere_api_version == 1:
+            response = self.client_v1.embed(
+                model = self.embedding_model_id,
+                texts = [self.process_text(text)],
+                input_type = input_type,
+                embedding_types = ['float']
+            )
+        else:
+            response = self.client_v2.embed(
+                model = self.embedding_model_id,
+                texts = [self.process_text(text)],
+                input_type = input_type,
+                embedding_types = ['float']
+            )
+            
         
         if not response or not response.embeddings or not response.embeddings.float_:
             self.logger.error("Error while embedding text with Cohere")
