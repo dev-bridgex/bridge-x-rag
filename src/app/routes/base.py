@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from helpers.config import get_settings, Settings
+from app.helpers.config import get_settings, Settings
 
 base_router = APIRouter(
     prefix="/api/v1",
@@ -16,3 +16,7 @@ async def welcome(app_settings: Settings = Depends(get_settings)):
         "app_name": app_name,
         "app_version": app_version
     }
+
+@base_router.get("/health")
+async def health_check():
+    return {"status": "healthy"}

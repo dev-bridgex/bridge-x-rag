@@ -1,9 +1,10 @@
-from fastapi import UploadFile
+from fastapi import UploadFile, status, HTTPException
 from .BaseController import BaseController
-from .ProjectController import ProjectController
-from models import ResponseSignal
 import re
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DataController(BaseController):
     def __init__(self):
@@ -11,25 +12,46 @@ class DataController(BaseController):
         self.size_scale = 1048576 # Convert MB to Bytes
         
     def validate_uploaded_file(self, file: UploadFile):
-        
+        """
+        Validates the uploaded file.
+        Raises HTTPException if validation fails.
+        """
         if file.content_type not in self.app_settings.FILE_ALLOWED_TYPES:
-            return False, ResponseSignal.FILE_TYPE_NOT_SUPPORTED.value
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"File type {file.content_type} not supported. Allowed types: {self.app_settings.FILE_ALLOWED_TYPES}"
+            )
         
-        if file.size > self.app_settings.FILE_MAX_SIZE * self.size_scale:
-            return False, ResponseSignal.FILE_SIZE_EXCEEDED.value
+        # Check file size - handle case where size might be None
+        file_size = file.size
+        if file_size is None:
+            # Try to determine size by reading and seeking back
+            try:
+                file.file.seek(0, 2)  # Seek to end
+                file_size = file.file.tell()  # Get position (size)
+                file.file.seek(0)  # Seek back to beginning
+            except Exception as e:
+                logger.warning(f"Could not determine file size: {e}")
+                # Assume it's valid and let other validations catch issues
+                file_size = 0
         
-        return True, ResponseSignal.FILE_VALIDATED_SUCCESS.value
+        if file_size > self.app_settings.FILE_MAX_SIZE * self.size_scale:
+            max_size_mb = self.app_settings.FILE_MAX_SIZE
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File size ({file_size / self.size_scale:.2f} MB) exceeds maximum allowed size ({max_size_mb} MB)"
+            )
+        
+        return True
     
-    def generate_unique_filepath(self, project_id: str, original_file_name: str):
-        
-        # get a path for project directory to save the project files in
-        project_path = ProjectController().get_project_path(project_id=project_id)
+    def generate_unique_filepath(self, project_path: str, original_file_name: str):
         
         random_key = self.generate_random_string()
         cleaned_file_name = self.get_clean_file_name(orig_file_name=original_file_name)
+        new_file_name = random_key + "_" + cleaned_file_name
         
         new_file_path = os.path.join(
-            project_path, random_key + "_" + cleaned_file_name
+            project_path, new_file_name
         )
         
         while os.path.exists(new_file_path):
@@ -38,7 +60,7 @@ class DataController(BaseController):
                 project_path, random_key + "_" + cleaned_file_name
             )
         
-        return new_file_path, random_key + "_" + cleaned_file_name
+        return new_file_path, new_file_name
         
    
     
