@@ -1,10 +1,72 @@
-# Python
-__pycache__
+# Version control
+.git
+.gitignore
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 app.egg-info
-*.pyc
 .mypy_cache
-.coverage
-htmlcov
-.venv
+
+# Virtual environments
 .env
 .env.example
+.venv
+env/
+venv/
+ENV/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage/
+
+# Development tools
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Local data
+assets/files/*
+assets/database/*
+!assets/files/.gitkeep
+!assets/database/.gitkeep
+
+# Logs
+*.log
+
+# Docker-specific files
+Dockerfile*
+docker-compose*
+docker-readme.md
+.dockerignore
+
+# Documentation
+docs/
+*.md
+!docker-readme.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# OS-specific files
+.DS_Store
+Thumbs.db

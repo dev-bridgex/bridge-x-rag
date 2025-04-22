@@ -1,0 +1,58 @@
+services:
+  mongodb:
+    image: docker.io/bitnami/mongodb:8.0
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./deployment/mongodb/initdb.d/init-mongo.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+      - mongodb-data:/bitnami/mongodb
+      - mongodb-log:/opt/bitnami/mongodb/logs
+    networks:
+      - bridgex-rag
+    env_file:
+      - ./deployment/mongodb/.env
+    restart: unless-stopped
+    # # Simple TCP connection health check
+    # healthcheck:
+    #   test: ["CMD", "bash", "-c", "nc -z localhost 27017"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+    #   start_period: 60s
+
+  web:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    entrypoint: ["/bin/bash", "/app/entrypoint.dev.sh"]
+    container_name: bridgex-rag-dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app  # Mount code as volume for hot-reload
+    env_file:
+      - ./src/.env
+    environment:
+      # Explicitly set MongoDB connection details
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+    networks:
+      - bridgex-rag
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "2"
+        max-size: "100k"
+
+networks:
+  bridgex-rag:
+
+volumes:
+  mongodb-data:
+    driver: local
+  mongodb-log:
+    driver: local

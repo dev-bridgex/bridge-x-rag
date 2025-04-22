@@ -110,15 +110,81 @@ The API is organized into the following groups:
 
 ### Using Docker
 
-1. Build the Docker image:
+#### Development Environment
+
+1. Clone the repository and navigate to the project root
+
+2. Set up the environment files:
    ```bash
-   docker build -t bridge-x-rag .
+   # Application environment
+   cp src/.env.example src/.env
+   # Edit src/.env with your configuration
+
+   # MongoDB environment
+   cp deployment/mongodb/.env.example deployment/mongodb/.env
+   # Edit deployment/mongodb/.env with your MongoDB configuration
    ```
 
-2. Run the container:
+3. Start the development environment:
    ```bash
-   docker run -p 8000:8000 --env-file .env bridge-x-rag
+   docker-compose up -d
    ```
+
+   Or use the deployment script:
+   ```bash
+   ./deployment/scripts/deploy.sh dev
+   ```
+
+#### Production Environment
+
+1. Clone the repository and navigate to the project root
+
+2. Set up the environment files for production:
+   ```bash
+   # Application environment
+   cp src/.env.example src/.env
+   # Edit src/.env with your production configuration
+
+   # MongoDB environment
+   cp deployment/mongodb/.env.example deployment/mongodb/.env
+   # Edit deployment/mongodb/.env with your MongoDB configuration
+
+   # PostgreSQL environment
+   cp deployment/postgres/.env.example deployment/postgres/.env
+   # Edit deployment/postgres/.env with your PostgreSQL configuration
+   ```
+
+3. Start the production environment:
+   ```bash
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
+
+   Or use the deployment script:
+   ```bash
+   ./deployment/scripts/deploy.sh prod
+   ```
+
+#### Deployment Structure
+
+The project uses a modular deployment structure:
+
+```
+bridge-x-rag/
+├── docker-compose.yml       # Development compose file
+├── docker-compose.prod.yml  # Production compose file
+├── src/                     # Application code
+│   ├── .env.example         # Application environment variables
+├── deployment/              # Deployment configurations
+│   ├── mongodb/             # MongoDB specific configs
+│   │   ├── .env.example     # MongoDB environment variables
+│   │   └── initdb.d/        # MongoDB initialization scripts
+│   ├── postgres/            # PostgreSQL specific configs (production)
+│   │   └── .env.example     # PostgreSQL environment variables
+│   ├── nginx/               # Nginx configurations
+│   └── scripts/             # Deployment scripts
+```
+
+See the [deployment README](deployment/README.md) for more details.
 
 ## Development
 
@@ -173,4 +239,4 @@ export PS1="\[\033[01;32m\]\u@\h:\w\n\[\033[00m\]\$ "
 
 ## License
 
-[MIT License](LICENSE)
+This project is licensed under the GNU GENERAL PUBLIC License - see the [LICENSE](LICENSE) file for details.
