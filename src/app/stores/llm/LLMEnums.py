@@ -11,7 +11,7 @@ class OpenAIEnum(Enum):
     ASSISTANT = "assistant"
     
 
-class CohereEnum(Enum):
+class CohereAPIv1Enum(Enum):
     SYSTEM = "SYSTEM"
     USER = "USER"
     ASSISTANT = "CHATBOT"
@@ -22,11 +22,15 @@ class CohereEnum(Enum):
         IMAGE = "image"
         
 
-class CohereAPIv2Enum(CohereEnum):
+class CohereAPIv2Enum(Enum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
-    
+    class InputTypes(Enum):
+        DOCUMENT = "search_document"
+        QUERY = "search_query"
+        IMAGE = "image"
+        
 
 
 class DocumentTypeEnum(Enum):

@@ -29,7 +29,7 @@ class OpenAIProvider(LLMProviderInterface):
         
         self.client = OpenAI(
             api_key=self.api_key,
-            api_url = self.api_url
+            base_url = self.api_url if self.api_url and len(self.api_url) else None
         )
         
         self.logger = get_logger(__name__)
@@ -83,7 +83,7 @@ class OpenAIProvider(LLMProviderInterface):
             self.logger.error("Error while generating text with OpenAI")
             return None
                 
-        return response.choices[0].message["content"]
+        return response.choices[0].message.content
     
     
     def embed_text(self, text: str, document_type: str = None):
@@ -101,9 +101,7 @@ class OpenAIProvider(LLMProviderInterface):
             input = text
         )
         
-        if not response or not response.data or len(response.data) == 0 \
-            or not response.data[0].embedding:
-            
+        if not response or not response.data or len(response.data) == 0 or not response.data[0].embedding:
             self.logger.error("Error while embedding text with OpenAI")
             return None
         

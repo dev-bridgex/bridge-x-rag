@@ -30,7 +30,7 @@ class CohereProvider(LLMProviderInterface):
         self.cohere_api_version = cohere_api_version
         
         self.client_v1 = cohere.Client(api_key=self.api_key) if cohere_api_version == 1 else None
-        self.client_v2: V2Client = cohere.client_v2(api_key=self.api_key) if cohere_api_version == 2 else None
+        self.client_v2 = cohere.ClientV2(api_key=self.api_key) if cohere_api_version == 2 else None
             
         self.logger = get_logger(__name__)
         

@@ -2,9 +2,9 @@ from fastapi import UploadFile, status, HTTPException
 from .BaseController import BaseController
 import re
 import os
-import logging
+from app.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class DataController(BaseController):
     def __init__(self):
