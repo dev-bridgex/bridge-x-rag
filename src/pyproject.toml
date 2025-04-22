@@ -18,4 +18,5 @@ dependencies = [
     "pytz>=2025.2",
     "qdrant-client>=1.13.3",
     "tdqm>=0.0.1",
+    "uvicorn>=0.29.0",
 ]
