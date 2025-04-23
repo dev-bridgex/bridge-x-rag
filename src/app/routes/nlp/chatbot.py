@@ -5,7 +5,7 @@ from app.logging import get_logger
 from app.models import KnowledgeBaseModel, AssetModel, ChunkModel
 from app.controllers import NLPController
 from .service import NLPService
-from .schemas import ChatRequest, ChatResponse
+from .schemas import ChatRequest, ChatResponse, RAGAnswerRequest, RAGAnswerResponse
 from app.dependencies import get_knowledge_base_model, get_asset_model, get_chunk_model, get_nlp_controller
 
 logger = get_logger(__name__)
@@ -33,21 +33,63 @@ async def get_nlp_service(
 async def chat_with_knowledge_base(
     knowledge_base_id: str,
     chat_request: ChatRequest,
-    nlp_service: NLPService = Depends(get_nlp_service)  # Will be used in future implementation
+    nlp_service: NLPService = Depends(get_nlp_service)
 ):
     """
     Chat with a knowledge base using RAG
 
-    This endpoint is a placeholder for future implementation.
-    It will use the RAG approach to generate responses based on the knowledge base content.
-    """
-    # This is a placeholder for future implementation
-    # In the future, this will call a method in the NLPService to handle chat
+    This endpoint allows for conversational interaction with a knowledge base.
+    It can use RAG (Retrieval-Augmented Generation) to provide context-aware responses
+    based on the content of the knowledge base.
 
-    # For now, return a placeholder response
+    - query: The user's message or question
+    - history: Previous chat history (optional)
+    - use_rag: Whether to use retrieval for context (default: true)
+    - limit: Maximum number of chunks to retrieve (default: 5)
+    """
+    response, sources = await nlp_service.chat_with_knowledge_base(
+        knowledge_base_id=knowledge_base_id,
+        query=chat_request.query,
+        history=chat_request.history,
+        use_rag=chat_request.use_rag,
+        limit=chat_request.limit
+    )
+
     return {
-        "response": "Chat functionality is not implemented yet. This is a placeholder for future development.",
-        "sources": [],
+        "response": response,
+        "sources": sources,
         "query": chat_request.query,
+        "knowledge_base_id": knowledge_base_id
+    }
+
+
+@router.post("/knowledge-bases/{knowledge_base_id}/answer",
+           response_model=RAGAnswerResponse,
+           description="Answer a question using RAG")
+async def answer_rag_query(
+    knowledge_base_id: str,
+    rag_request: RAGAnswerRequest,
+    nlp_service: NLPService = Depends(get_nlp_service)
+):
+    """
+    Answer a question using RAG (Retrieval-Augmented Generation)
+
+    This endpoint retrieves relevant chunks from the knowledge base based on the query,
+    then uses an LLM to generate a comprehensive answer based on those chunks.
+
+    - query: The question to answer
+    - limit: Maximum number of chunks to retrieve (default: 5)
+    """
+    answer, full_prompt, chat_history = await nlp_service.answer_rag_query(
+        knowledge_base_id=knowledge_base_id,
+        query=rag_request.query,
+        limit=rag_request.limit,
+    )
+
+    return {
+        "answer": answer,
+        "full_prompt": full_prompt,
+        "chat_history": chat_history,
+        "query": rag_request.query,
         "knowledge_base_id": knowledge_base_id
     }

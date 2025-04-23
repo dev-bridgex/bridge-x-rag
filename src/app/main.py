@@ -6,7 +6,7 @@ from app.routes.assets import asset_router
 from app.routes.knowledge_bases import knowledge_base_router
 from app.routes.nlp import nlp_router
 
-from app.helpers.config import get_settings, init_database_dir, init_files_dir
+from app.helpers.config import get_settings, init_vector_db_data_dir, init_files_dir
 from app.db.mongodb import connect_and_init_db, close_db_connection
 
 from app.logging import setup_logging, get_logger
@@ -17,8 +17,9 @@ from app.middleware.logging_middleware import logging_middleware
 
 from app.stores.llm import LLMProviderFactory
 from app.stores.vectordb import VectorDBProviderFactory
+from app.prompt_templates.template_parser import TemplateParser
 
-from app.testing_vectordb import test_qdrant
+# from app.testing_vectordb import test_qdrant
 
 
 # Initialize application settings
@@ -33,9 +34,9 @@ async def lifespan(app: FastAPI):
     try:
         # Startup: Create files directory (will store projects in) in the assets directory
         files_dir = init_files_dir()
-        database_dir = init_database_dir()
+        vector_db_data_dir = init_vector_db_data_dir()
         module_logger.info(f"Files directory initialized at: {files_dir}")
-        module_logger.info(f"Database directory initialized at: {database_dir}")
+        module_logger.info(f"Database directory initialized at: {vector_db_data_dir}")
 
         # Startup: Connect to the database
         module_logger.info("Initializing database connection...")
@@ -56,10 +57,12 @@ async def lifespan(app: FastAPI):
             )
 
         # init Vector Db client
-
         app.vectordb_client = vectordb_provider_factory.create(
             provider = app_settings.VECTOR_DB_BACKEND
         )
+
+        # init Template Parser
+        app.template_parser = TemplateParser()
 
         # Uses async context manager (__aenter__ / __aexit__) to connect to the vector db client
         async with app.vectordb_client:

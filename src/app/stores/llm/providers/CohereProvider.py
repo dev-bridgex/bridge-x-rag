@@ -44,7 +44,7 @@ class CohereProvider(LLMProviderInterface):
     def process_text(self, text: str) -> str:
         return text[: self.default_input_max_characters].strip()
 
-    def construct_pompt(self, prompt: str, role: str):
+    def construct_prompt(self, prompt: str, role: str):
         return {
             "role": role,
             "content": self.process_text(prompt)
@@ -79,7 +79,7 @@ class CohereProvider(LLMProviderInterface):
 
         else:
             chat_history.append(
-                self.construct_pompt(prompt=prompt, role=CohereAPIv2Enum.USER.value)
+                self.construct_prompt(prompt=prompt, role=CohereAPIv2Enum.USER.value)
             )
 
             response = self.client_v2.chat(

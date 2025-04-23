@@ -19,6 +19,11 @@ class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query")
     limit: Optional[int] = Field(5, description="Maximum number of results to return")
 
+class RAGAnswerRequest(BaseModel):
+    """Request model for RAG answer generation"""
+    query: str = Field(..., description="Question to answer")
+    limit: Optional[int] = Field(5, description="Maximum number of chunks to retrieve")
+
 class ChatRequest(BaseModel):
     """Request model for chat with RAG"""
     query: str = Field(..., description="User query")
@@ -70,3 +75,11 @@ class ChatResponse(BaseResponse):
     sources: List[Source] = Field([], description="List of sources used to generate the response")
     query: str = Field(..., description="Original query")
     knowledge_base_id: str = Field(..., description="ID of the knowledge base used for the chat")
+
+class RAGAnswerResponse(BaseResponse):
+    """Response model for RAG answer operation"""
+    answer: str = Field(..., description="Generated answer text")
+    full_prompt: str = Field(..., description="Full prompt sent to the LLM")
+    chat_history: List[Dict[str, str]] = Field(..., description="Chat history including system and user messages")
+    query: str = Field(..., description="Original query")
+    knowledge_base_id: str = Field(..., description="ID of the knowledge base used for the answer")

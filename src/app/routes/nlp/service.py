@@ -359,52 +359,6 @@ class NLPService:
                 detail=error_msg
             )
 
-    async def search_collection(self, knowledge_base_id: str, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search a knowledge base's vector database collection
-
-        Args:
-            knowledge_base_id: The ID of the knowledge base to search
-            query: The search query text
-            limit: Maximum number of results to return (default: 5)
-
-        Returns:
-            A list of search results, each containing the chunk text, metadata, and similarity score
-
-        Raises:
-            HTTPException: If the knowledge base is not found, the collection doesn't exist, or search fails"""
-        try:
-            # Validate knowledge base
-            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
-
-            # Check if collection exists
-            collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
-
-            if not collection_exists:
-                raise_vector_db_error(f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.", status_code=status.HTTP_404_NOT_FOUND)
-
-            # Perform search
-            results = await self.nlp_controller.search_vector_db(
-                knowledge_base=knowledge_base,
-                query=query,
-                limit=limit
-            )
-
-            if not results:
-                raise_search_error("Search failed or returned no results")
-
-            return results
-        except HTTPException:
-            # Re-raise HTTP exceptions directly
-            raise
-        except Exception as e:
-            # Log and convert other exceptions to HTTP exceptions
-            error_msg = f"Error searching collection for knowledge base '{knowledge_base_id}': {str(e)}"
-            logger.error(error_msg)
-            raise_http_exception(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
-                detail=error_msg
-            )
 
     async def delete_asset_from_index(self, knowledge_base_id: str, asset_id: str) -> Dict[str, Any]:
         """Delete a specific asset from the vector database
@@ -456,5 +410,174 @@ class NLPService:
             raise_http_exception(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error_type=ErrorType.VECTOR_DB_ERROR.value,
+                detail=error_msg
+            )
+
+
+    async def search_collection(self, knowledge_base_id: str, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """Search a knowledge base's vector database collection
+
+        Args:
+            knowledge_base_id: The ID of the knowledge base to search
+            query: The search query text
+            limit: Maximum number of results to return (default: 5)
+
+        Returns:
+            A list of search results, each containing the chunk text, metadata, and similarity score
+
+        Raises:
+            HTTPException: If the knowledge base is not found, the collection doesn't exist, or search fails"""
+        try:
+            # Validate knowledge base
+            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
+
+            # Check if collection exists
+            collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
+
+            if not collection_exists:
+                raise_vector_db_error(f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.", status_code=status.HTTP_404_NOT_FOUND)
+
+            # Perform search
+            results = await self.nlp_controller.search_vector_db(
+                knowledge_base=knowledge_base,
+                query=query,
+                limit=limit
+            )
+
+            if not results:
+                raise_search_error("Search failed or returned no results")
+
+            return results
+        except HTTPException:
+            # Re-raise HTTP exceptions directly
+            raise
+        except Exception as e:
+            # Log and convert other exceptions to HTTP exceptions
+            error_msg = f"Error searching collection for knowledge base '{knowledge_base_id}': {str(e)}"
+            logger.error(error_msg)
+            raise_http_exception(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
+                detail=error_msg
+            )
+
+
+    async def answer_rag_query(self, knowledge_base_id: str, query: str, limit: int = 5) -> Tuple[str, str, List[Dict[str, Any]]]:
+        """
+        Generate an answer to a question using RAG (Retrieval-Augmented Generation)
+
+        Args:
+            knowledge_base_id: The ID of the knowledge base to search in
+            query: The user's question
+            limit: Maximum number of chunks to retrieve
+
+        Returns:
+            Tuple containing:
+                - answer: The generated answer text
+                - full_prompt: The full prompt sent to the LLM
+                - chat_history: The chat history including system and user messages
+
+        Raises:
+            HTTPException: If the knowledge base is not found, the collection doesn't exist, or search fails
+        """
+        try:
+            # Validate knowledge base
+            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
+
+            # Check if collection exists
+            collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
+
+            if not collection_exists:
+                raise_vector_db_error(f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.", status_code=status.HTTP_404_NOT_FOUND)
+
+            # Generate answer using RAG
+            answer, full_prompt, chat_history = await self.nlp_controller.answer_rag_question(
+                knowledge_base=knowledge_base,
+                query=query,
+                limit=limit
+            )
+
+            if not answer:
+                raise_http_exception(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
+                    detail="Failed to generate an answer from the retrieved documents"
+                )
+
+            return answer, full_prompt, chat_history
+
+        except HTTPException:
+            # Re-raise HTTP exceptions directly
+            raise
+        except Exception as e:
+            # Log and convert other exceptions to HTTP exceptions
+            error_msg = f"Error generating RAG answer for knowledge base '{knowledge_base_id}': {str(e)}"
+            logger.error(error_msg)
+            raise_http_exception(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
+                detail=error_msg
+            )
+
+    async def chat_with_knowledge_base(self, knowledge_base_id: str, query: str, history: List[Dict[str, str]] = None, use_rag: bool = True, limit: int = 5) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Chat with a knowledge base using RAG or direct LLM generation
+
+        Args:
+            knowledge_base_id: The ID of the knowledge base to search in
+            query: The user's question
+            history: Previous chat history (list of role/content dictionaries)
+            use_rag: Whether to use RAG (retrieval) or just direct LLM generation
+            limit: Maximum number of chunks to retrieve when using RAG
+
+        Returns:
+            Tuple containing:
+                - response: The generated response text
+                - sources: List of sources used to generate the response (empty if not using RAG)
+
+        Raises:
+            HTTPException: If the knowledge base is not found, the collection doesn't exist, or chat fails
+        """
+        try:
+            # Validate knowledge base
+            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
+
+            # If using RAG, check if collection exists
+            if use_rag:
+                collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
+                if not collection_exists:
+                    raise_vector_db_error(
+                        f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.",
+                        status_code=status.HTTP_404_NOT_FOUND
+                    )
+
+            # Generate chat response
+            response, sources = await self.nlp_controller.chat_with_knowledge_base(
+                knowledge_base=knowledge_base,
+                query=query,
+                history=history,
+                use_rag=use_rag,
+                limit=limit
+            )
+
+            if not response:
+                raise_http_exception(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
+                    detail="Failed to generate a chat response"
+                )
+
+            return response, sources
+
+        except HTTPException:
+            # Re-raise HTTP exceptions directly
+            raise
+        except Exception as e:
+            # Log and convert other exceptions to HTTP exceptions
+            error_msg = f"Error generating chat response for knowledge base '{knowledge_base_id}': {str(e)}"
+            logger.error(error_msg)
+            raise_http_exception(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
                 detail=error_msg
             )

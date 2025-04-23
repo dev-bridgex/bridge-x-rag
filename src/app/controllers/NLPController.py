@@ -3,21 +3,24 @@ from app.stores.vectordb import VectorDBProviderInterface
 from app.stores.llm import LLMProviderInterface
 from app.stores.llm.LLMEnums import DocumentTypeEnum
 from app.models.db_schemas import KnowledgeBase, DataChunk, Asset
-from typing import List, Optional
+from typing import List, Tuple, Dict, Any
 import json
 from app.logging import get_logger
+from app.prompt_templates.template_parser import TemplateParser
 
 logger = get_logger(__name__)
 
 class NLPController(BaseController):
     def __init__(self, vectordb_client: VectorDBProviderInterface,
                  generation_client: LLMProviderInterface,
-                 embedding_client: LLMProviderInterface) -> None:
+                 embedding_client: LLMProviderInterface,
+                 template_parser: TemplateParser = None) -> None:
         super().__init__()
 
         self.vectordb_client: VectorDBProviderInterface = vectordb_client
         self.generation_client: LLMProviderInterface = generation_client
         self.embedding_client: LLMProviderInterface = embedding_client
+        self.template_parser = template_parser or TemplateParser()
 
     def create_collection_name(self, knowledge_base_id: str):
         """Create a collection name using knowledge base ID"""
@@ -297,12 +300,12 @@ class NLPController(BaseController):
 
         if not vectors or len(vectors) == 0:
             return None
-        
+
         if isinstance(vectors, list) and len(vectors) > 0:
             query_vector = vectors[0]
 
         if not query_vector:
-            return False    
+            return False
 
 
         # step3: do semantic search in the vector db and retrieve most similar texts
@@ -317,16 +320,160 @@ class NLPController(BaseController):
 
         return retrieved_documents
 
+    async def answer_rag_question(self, knowledge_base: KnowledgeBase, query: str, limit: int = 10) -> Tuple[str, str, List[Dict[str, Any]]]:
+        """
+        Generate an answer to a question using RAG (Retrieval-Augmented Generation)
 
+        Args:
+            knowledge_base: The knowledge base to search in
+            query: The user's question
+            limit: Maximum number of chunks to retrieve
 
+        Returns:
+            Tuple containing:
+                - answer: The generated answer text
+                - full_prompt: The full prompt sent to the LLM
+                - chat_history: The chat history including system and user messages
+        """
+        answer, full_prompt, chat_history = None, None, None
 
+        # step1: retrieve related documents
+        retrieved_documents = await self.search_vector_db(
+            knowledge_base=knowledge_base,
+            query=query,
+            limit=limit,
+        )
 
+        if not retrieved_documents or len(retrieved_documents) == 0:
+            return answer, full_prompt, chat_history
 
+        # step2: Construct LLM prompt
+        system_prompt = self.template_parser.get_template("rag", "system_prompt")
 
+        documents_prompts = "\n".join([
+            self.template_parser.get_template("rag", "document_prompt", {
+                    "doc_number": idx + 1,
+                    "doc_name": doc.metadata.get("asset_name", "Unknown"),
+                    "source_path": doc.metadata.get("asset_path", "Unknown"),
+                    "page_number": doc.metadata.get("page_number", "N/A"),
+                    "chunk_order": doc.metadata.get("chunk_order", "N/A"),
+                    "content_type": doc.metadata.get("content_type", "text/plain"),
+                    "score": doc.score,
+                    "chunk_text": self.generation_client.process_text(doc.text),
+            })
+            for idx, doc in enumerate(retrieved_documents)
+        ])
 
+        footer_prompt = self.template_parser.get_template("rag", "footer_prompt", {
+            "query": query
+        })
 
+        # step3: Construct Generation Client Prompts
+        chat_history = [
+            self.generation_client.construct_prompt(
+                prompt=system_prompt,
+                role="system",
+            )
+        ]
 
+        full_prompt = "\n\n".join([documents_prompts, footer_prompt])
 
+        # step4: Retrieve the Answer
+        answer = self.generation_client.generate_text(
+            prompt=full_prompt,
+            chat_history=chat_history
+        )
 
+        return answer, full_prompt, chat_history
 
+    async def chat_with_knowledge_base(self, knowledge_base: KnowledgeBase, query: str, history: List[Dict[str, str]] = None, use_rag: bool = True, limit: int = 10) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Chat with a knowledge base using RAG or direct LLM generation
+
+        Args:
+            knowledge_base: The knowledge base to search in
+            query: The user's question
+            history: Previous chat history (list of role/content dictionaries)
+            use_rag: Whether to use RAG (retrieval) or just direct LLM generation
+            limit: Maximum number of chunks to retrieve when using RAG
+
+        Returns:
+            Tuple containing:
+                - response: The generated response text
+                - sources: List of sources used to generate the response (empty if not using RAG)
+        """
+        # Initialize chat history if not provided
+        if history is None:
+            history = []
+
+        # Initialize system prompt
+        if not any(msg.get("role") == "system" for msg in history):
+            # Add system prompt if not present in history
+            if use_rag:
+                system_prompt = self.template_parser.get_template("chat", "system_prompt_rag")
+            else:
+                system_prompt = self.template_parser.get_template("chat", "system_prompt_basic")
+
+            history.insert(0, self.generation_client.construct_prompt(
+                prompt=system_prompt,
+                role="system"
+            ))
+
+        sources = []
+
+        # If using RAG, retrieve relevant documents
+        if use_rag:
+            # Retrieve related documents
+            retrieved_documents = await self.search_vector_db(
+                knowledge_base=knowledge_base,
+                query=query,
+                limit=limit,
+            )
+
+            if retrieved_documents and len(retrieved_documents) > 0:
+                # Format documents for the prompt
+                documents_text = "\n\n".join([
+                    self.template_parser.get_template("chat", "document_prompt", {
+                        "doc_number": idx + 1,
+                        "doc_name": doc.metadata.get("asset_name", "Unknown"),
+                        "chunk_text": self.generation_client.process_text(doc.text),
+                    })
+                    for idx, doc in enumerate(retrieved_documents)
+                ])
+
+                # Create context message with retrieved documents
+                context_message = self.generation_client.construct_prompt(
+                    prompt=self.template_parser.get_template("chat", "context_prompt", {
+                        "documents": documents_text
+                    }),
+                    role="system"
+                )
+
+                # Add context message to history
+                history.append(context_message)
+
+                # Save sources for the response
+                sources = [
+                    {
+                        "id": str(idx),
+                        "text": doc.text,
+                        "metadata": doc.metadata,
+                        "score": doc.score
+                    }
+                    for idx, doc in enumerate(retrieved_documents)
+                ]
+
+        # Add the user query to history
+        history.append(self.generation_client.construct_prompt(
+            prompt=query,
+            role="user"
+        ))
+
+        # Generate response
+        response = self.generation_client.generate_text(
+            prompt="",  # Empty prompt since we're using chat history
+            chat_history=history
+        )
+
+        return response, sources
 

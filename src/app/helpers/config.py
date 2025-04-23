@@ -67,14 +67,14 @@ def get_settings():
 
 def init_files_dir():
     base_dir = os.path.dirname( os.path.dirname(__file__) )
-    files_dir = os.path.join(base_dir, "assets/files")
+    files_dir = os.path.join(base_dir, "static/files")
     if not os.path.exists(files_dir):
         os.mkdir(files_dir)    
     return files_dir
 
-def init_database_dir():
+def init_vector_db_data_dir():
     base_dir = os.path.dirname( os.path.dirname(__file__) )
-    database_dir = os.path.join(base_dir, "assets/database")
+    database_dir = os.path.join(base_dir, "static/vector_db_data/")
     if not os.path.exists(database_dir):
         os.mkdir(database_dir)    
     return database_dir
