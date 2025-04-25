@@ -108,9 +108,11 @@ class CohereProvider(LLMProviderInterface):
             return None
 
         input_type = CohereAPIv2Enum.InputTypes.value.DOCUMENT.value
-        texts_to_embed = [ self.process_text(text) for text in text]
+        texts_to_embed = []
+        if document_type == DocumentTypeEnum.DOCUMENT.value:
+            texts_to_embed = [ self.process_text(text) for text in text ]
         
-        if document_type == DocumentTypeEnum.QUERY:
+        if document_type == DocumentTypeEnum.QUERY.value:
             input_type = CohereAPIv2Enum.InputTypes.value.QUERY.value
             texts_to_embed = [ self.process_text(text) ]
 
@@ -124,7 +126,7 @@ class CohereProvider(LLMProviderInterface):
         else:
             response = self.client_v2.embed(
                 model = self.embedding_model_id,
-                texts = [ self.process_text(text) for text in text ],
+                texts = texts_to_embed,
                 input_type = input_type,
                 embedding_types = ['float']
             )
