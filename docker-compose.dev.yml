@@ -1,9 +1,9 @@
 services:
-  mongodb:
+  mongodb-api-testing:
     image: docker.io/bitnami/mongodb:8.0
-    container_name: mongodb
+    container_name: mongodb-api-testing
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
       - ./deployment/mongodb/initdb.d/init-mongo.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
       - mongodb-data:/bitnami/mongodb
@@ -35,12 +35,12 @@ services:
       - ./src/.env
     environment:
       # Explicitly set MongoDB connection details
-      - MONGODB_HOST=mongodb
-      - MONGODB_PORT=27017
+      - MONGODB_HOST=mongodb-api-testing
+      - MONGODB_PORT=27018
     networks:
       - bridgex-rag
     depends_on:
-      - mongodb
+      - mongodb-api-testing
     restart: unless-stopped
     logging:
       driver: "json-file"

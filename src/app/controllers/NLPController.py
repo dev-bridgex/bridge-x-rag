@@ -293,7 +293,7 @@ class NLPController(BaseController):
 
         # step2: generate text embedding vector
         vectors =  self.embedding_client.embed_text(text=query,
-                                                   document_type=DocumentTypeEnum.DOCUMENT.value)
+                                                   document_type=DocumentTypeEnum.QUERY.value)
 
         if not vectors or len(vectors) == 0:
             return None
