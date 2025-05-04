@@ -1,6 +1,6 @@
 from app.models import KnowledgeBaseModel, AssetModel, ChunkModel
 from app.models.db_schemas import KnowledgeBase, Asset, DataChunk
-from app.controllers import AssetController, KnowledgeBaseController, NLPController
+from app.controllers import KnowledgeBaseController, AssetController, ProcessingController, NLPController
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List, Tuple, Dict, Any, Optional
 import os
@@ -18,14 +18,18 @@ class AssetService:
 
     def __init__(self, db: AsyncIOMotorDatabase, knowledge_base_model: KnowledgeBaseModel = None,
                  asset_model: AssetModel = None, chunk_model: ChunkModel = None,
-                 asset_controller: AssetController = None, knowledge_base_controller: KnowledgeBaseController = None,
+                 knowledge_base_controller: KnowledgeBaseController = None,
+                 asset_controller: AssetController = None,
+                 processing_controller: ProcessingController = None,
                  nlp_controller: NLPController = None):
         self.db = db
         self.knowledge_base_model = knowledge_base_model
         self.asset_model = asset_model
         self.chunk_model = chunk_model
-        self.asset_controller = asset_controller or AssetController()
-        self.knowledge_base_controller = knowledge_base_controller or KnowledgeBaseController()
+
+        self.knowledge_base_controller = knowledge_base_controller
+        self.asset_controller = asset_controller
+        self.processing_controller = processing_controller
         self.nlp_controller = nlp_controller
 
     async def _ensure_knowledge_base_model(self) -> None:
@@ -184,9 +188,10 @@ class AssetService:
         This method handles the complete asset upload process:
         1. Validates the file
         2. Validates the knowledge base
-        3. Creates a unique file path
-        4. Saves the file to disk
-        5. Creates an asset record in the database
+        3. Generates a file hash for deduplication
+        4. Checks if the file already exists in the knowledge base
+        5. If duplicate found, returns the existing asset
+        6. Otherwise, creates a unique file path, saves the file, and creates a new asset record
 
         Args:
             knowledge_base_id: The ID of the knowledge base to upload the asset to
@@ -194,7 +199,7 @@ class AssetService:
             chunk_size: The chunk size to use when saving the file
 
         Returns:
-            A tuple containing the created asset record and the knowledge base
+            A tuple containing the created or existing asset record and the knowledge base
 
         Raises:
             KnowledgeBaseNotFoundError: If the knowledge base does not exist
@@ -207,12 +212,27 @@ class AssetService:
             # Validate the knowledge base
             knowledge_base = await self.validate_knowledge_base(knowledge_base_id=knowledge_base_id)
 
+            # Generate file hash for deduplication
+            file_hash = await self.asset_controller.generate_file_hash(file)
+
+            if file_hash:
+                # Check if file with same hash already exists in this knowledge base
+                await self._ensure_asset_model()
+                existing_asset = await self.asset_model.find_asset_by_hash(
+                    file_hash=file_hash,
+                    knowledge_base_id=knowledge_base.id
+                )
+
+                if existing_asset:
+                    logger.info(f"Duplicate file detected. Using existing asset: {existing_asset.asset_name} (ID: {existing_asset.id})")
+                    return existing_asset, knowledge_base
+
             # Get knowledge base directory
             knowledge_base_dir_path = self.knowledge_base_controller.get_knowledge_base_path(knowledge_base_id=knowledge_base_id)
 
             # Generate unique file path
             file_path, file_name = self.asset_controller.generate_unique_filepath(
-                project_path=knowledge_base_dir_path,
+                knowledge_base_path=knowledge_base_dir_path,
                 original_file_name=file.filename
             )
 
@@ -238,7 +258,8 @@ class AssetService:
                 asset_path=file_path,
                 asset_type=file.content_type,
                 asset_name=file_name,
-                asset_size=file.size
+                asset_size=file.size,
+                file_hash=file_hash  # Store the file hash for future deduplication
             )
 
             asset = await self.asset_model.create(asset_resource)
@@ -402,7 +423,7 @@ class AssetService:
                            knowledge_base: KnowledgeBase,
                            asset: Asset,
                            chunk_size: int,
-                           overlap_size: int) -> int:
+                           overlap_size: int = 50) -> int:
         """Process a single asset into chunks for RAG operations.
 
         This is an internal method used by process_single_asset and process_assets.
@@ -432,31 +453,34 @@ class AssetService:
             raise_processing_failed(error_msg)
 
         # Check file exists
-        file_path = self.asset_controller.get_file_path(
-            file_name=asset.asset_name,
-            project_path=knowledge_base_path
-        )
-        if not os.path.exists(file_path):
+        # file_path = self.processing_controller.get_file_path(
+        #     file_name=asset.asset_name,
+        #     knowledge_base_path=knowledge_base_path
+        # )
+
+        if not os.path.exists(asset.asset_path):
             error_msg = f"File not found: {asset.asset_name} in knowledge base: {knowledge_base.id}"
             logger.error(error_msg)
             raise_processing_failed(error_msg)
 
-        # Get file content
-        file_content = self.asset_controller.get_file_content(
+        # Get file content and process it into chunks
+        file_chunks = await self.processing_controller.get_file_content(
             file_name=asset.asset_name,
-            file_path=file_path
+            file_path=asset.asset_path,
+            chunk_size=chunk_size
         )
-        if file_content is None:
+        # Log the number of chunks
+        logger.info(f"Processing file: {asset.asset_name} with {len(file_chunks)} chunks")
+
+        if file_chunks is None:
             error_msg = f"Failed to get content for file: {asset.asset_name}"
             logger.error(error_msg)
             raise_processing_failed(error_msg)
 
-        # Process file content into chunks
-        file_chunks = self.asset_controller.process_file_content(
-            file_content=file_content,
-            file_name=asset.asset_name,
-            chunk_size=chunk_size,
-            overlap_size=overlap_size
+        # Enhance chunks with additional metadata if needed
+        file_chunks = self.processing_controller.enhance_file_chunks(
+            file_chunks=file_chunks,
+            file_name=asset.asset_name
         )
 
         if file_chunks is None or len(file_chunks) == 0:
@@ -464,19 +488,29 @@ class AssetService:
             logger.error(error_msg)
             raise_processing_failed(error_msg)
 
-        # Create chunk records
+        # Create chunk records with enhanced metadata
         await self._ensure_chunk_model()
 
-        file_chunks_records = [
-            DataChunk(
+        file_chunks_records = []
+
+        for idx, chunk in enumerate(file_chunks):
+            # Use the metadata from the chunk (already cleaned by ProcessingController.enhance_file_chunks)
+            metadata = chunk.metadata.copy()
+
+            # Ensure document_name is in metadata if somehow missing
+            if "document_name" not in metadata:
+                metadata["document_name"] = asset.asset_name
+
+            # Create the DataChunk record with the essential fields and metadata
+            chunk_record = DataChunk(
                 chunk_text=chunk.page_content,
-                chunk_metadata=chunk.metadata,
                 chunk_order=idx+1,
                 chunk_knowledge_base_id=knowledge_base.id,
-                chunk_asset_id=asset.id
+                chunk_asset_id=asset.id,
+                metadata=metadata
             )
-            for idx, chunk in enumerate(file_chunks)
-        ]
+
+            file_chunks_records.append(chunk_record)
 
         # Insert chunks
         chunks_inserted = await self.chunk_model.insert_many_chunks(chunks=file_chunks_records)

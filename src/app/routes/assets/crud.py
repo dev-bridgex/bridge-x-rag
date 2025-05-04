@@ -1,17 +1,18 @@
 from fastapi import APIRouter, Depends, UploadFile, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.db.mongodb import get_database
 from app.helpers.config import get_settings, Settings
 from app.logging import get_logger
-from app.models import AssetModel, KnowledgeBaseModel, ChunkModel
-from app.controllers import AssetController, KnowledgeBaseController, NLPController
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.models import KnowledgeBaseModel, AssetModel, ChunkModel
+from app.controllers import KnowledgeBaseController, AssetController, ProcessingController, NLPController
+from app.dependencies import (
+    get_database, get_knowledge_base_model, get_asset_model, get_chunk_model,
+    get_knowledge_base_controller, get_asset_controller, get_processing_controller, get_nlp_controller
+)
 from .service import AssetService
-from app.dependencies import get_knowledge_base_model, get_asset_model, get_chunk_model, get_asset_controller, get_knowledge_base_controller, get_nlp_controller
 from .schemas import (
     AssetDetailResponse, AssetCreateResponse, AssetDeleteResponse,
     PaginatedAssetListResponse, AssetListItem, AssetResponse
 )
-# Response helpers have been removed - responses are now created directly
 
 logger = get_logger(__name__)
 
@@ -23,8 +24,9 @@ async def get_asset_service(
     knowledge_base_model: KnowledgeBaseModel = Depends(get_knowledge_base_model),
     asset_model: AssetModel = Depends(get_asset_model),
     chunk_model: ChunkModel = Depends(get_chunk_model),
-    asset_controller: AssetController = Depends(get_asset_controller),
     knowledge_base_controller: KnowledgeBaseController = Depends(get_knowledge_base_controller),
+    asset_controller: AssetController = Depends(get_asset_controller),
+    processing_controller: ProcessingController = Depends(get_processing_controller),
     nlp_controller: NLPController = Depends(get_nlp_controller)
 ):
     return AssetService(
@@ -32,11 +34,11 @@ async def get_asset_service(
         knowledge_base_model=knowledge_base_model,
         asset_model=asset_model,
         chunk_model=chunk_model,
-        asset_controller=asset_controller,
         knowledge_base_controller=knowledge_base_controller,
+        asset_controller=asset_controller,
+        processing_controller=processing_controller,
         nlp_controller=nlp_controller
     )
-
 
 @router.post("/{knowledge_base_id}",
            response_model=AssetCreateResponse,
@@ -107,7 +109,7 @@ async def list_assets(
     )
 
 
-@router.get("/{knowledge_base_id}/{asset_id}",
+@router.get("/{knowledge_base_id}/asset/{asset_id}",
           response_model=AssetDetailResponse,
           description="Get a specific asset by ID")
 async def get_asset(
@@ -138,7 +140,7 @@ async def get_asset(
     )
 
 
-@router.delete("/{knowledge_base_id}/{asset_id}",
+@router.delete("/{knowledge_base_id}/asset/{asset_id}",
              response_model=AssetDeleteResponse,
              description="Delete a specific asset by ID")
 async def delete_asset(

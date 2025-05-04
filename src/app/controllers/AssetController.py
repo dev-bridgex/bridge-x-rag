@@ -3,13 +3,13 @@ from fastapi import UploadFile
 import os
 import re
 import aiofiles
+import base64
+import hashlib
 from app.logging import get_logger
-from app.models.db_schemas import Asset
-from app.models import FileTypesEnum
-from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
-from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from typing import List, Optional
+from typing import List, Dict, Any, Optional, Tuple
+import pymupdf
+from app.helpers.config import get_settings
+
 
 logger = get_logger(__name__)
 
@@ -17,6 +17,7 @@ class AssetController(BaseController):
     def __init__(self):
         super().__init__()
         self.size_scale = 1048576  # Convert MB to Bytes
+
 
     def validate_uploaded_file(self, file: UploadFile):
         """
@@ -58,33 +59,31 @@ class AssetController(BaseController):
 
         return True
 
-    def generate_unique_filepath(self, project_path: str, original_file_name: str):
+    def generate_unique_filepath(self, knowledge_base_path: str, original_file_name: str):
         """Generate a unique file path for an asset in a project directory"""
         random_key = self.generate_random_string()
         cleaned_file_name = self.get_clean_file_name(orig_file_name=original_file_name)
         new_file_name = random_key + "_" + cleaned_file_name
 
         new_file_path = os.path.join(
-            project_path, new_file_name
+            knowledge_base_path, new_file_name
         )
 
         while os.path.exists(new_file_path):
             random_key = self.generate_random_string()
             new_file_name = random_key + "_" + cleaned_file_name
             new_file_path = os.path.join(
-                project_path, new_file_name
+                knowledge_base_path, new_file_name
             )
 
-        return new_file_path, new_file_name
+        return new_file_path, cleaned_file_name
 
     def get_clean_file_name(self, orig_file_name: str):
-        """Clean a file name by removing special characters"""
-        # remove any special characters except underscore and .
-        cleaned_file_name = re.sub(r'[^\w.]', '', orig_file_name.strip())
-
-        # replace spaces with underscore
+        """Clean a file name by removing special characters except _, -, ., and space, then replace space with _"""
+        # Allow alphanumeric, underscore, hyphen, dot, and space
+        cleaned_file_name = re.sub(r'[^\w.\- ]', '', orig_file_name.strip())
+        # Replace spaces with underscore
         cleaned_file_name = cleaned_file_name.replace(" ", "_")
-
         return cleaned_file_name
 
     async def save_uploaded_file(self, file: UploadFile, file_path: str, chunk_size: int):
@@ -124,68 +123,63 @@ class AssetController(BaseController):
             logger.error(f"Error deleting asset file '{file_path}': {e}")
             return False
 
-    def get_file_extension(self, file_name: str) -> str:
-        """Get the extension of a file"""
-        return os.path.splitext(file_name)[-1]
+    async def generate_file_hash(self, file: UploadFile) -> str:
+        """
+        Generate a SHA-256 hash of the file content for deduplication.
 
-    def get_file_path(self, file_name: str, project_path: str) -> str:
-        """Get the full path to a file in a project directory"""
-        return os.path.join(project_path, file_name)
+        Args:
+            file: The uploaded file
 
-    def get_file_loader(self, file_name: str, file_path: str):
-        """Get the appropriate document loader for a file based on its extension"""
-        file_extension = self.get_file_extension(file_name=file_name)
+        Returns:
+            str: Hexadecimal hash of the file content
+        """
+        try:
+            # Reset file position to beginning
+            await file.seek(0)
 
-        if file_extension == FileTypesEnum.TXT.value:
-            return TextLoader(file_path, encoding="utf-8")
+            # Create hash object
+            file_hash = hashlib.sha256()
 
-        if file_extension == FileTypesEnum.PDF.value:
-            return PyMuPDFLoader(file_path)
+            # Read and update hash in chunks to handle large files
+            chunk_size = 4096  # 4KB chunks
+            while chunk := await file.read(chunk_size):
+                file_hash.update(chunk)
 
-        return None
+            # Reset file position for subsequent operations
+            await file.seek(0)
 
-    def get_file_content(self, file_name: str, file_path: str) -> List[Document]:
-        """Load the content of a file as a list of documents"""
-        loader = self.get_file_loader(file_name=file_name, file_path=file_path)
-        if loader is None:
-            logger.error(f"No loader available for file: {file_name}")
-            return None
-        return loader.load()
+            # Return the hexadecimal digest
+            return file_hash.hexdigest()
+        except Exception as e:
+            logger.error(f"Error generating file hash: {e}")
+            # Return empty string on error, which won't match any existing hash
+            return ""
 
-    def process_file_content(
-        self,
-        file_content: List[Document],
-        file_name: str,
-        chunk_size: int=400,
-        overlap_size: int=20
-    ) -> List[Document]:
-        """Process file content into chunks"""
-        if not file_content:
-            logger.error(f"No content to process for file: {file_name}")
-            return None
+    async def read_file_and_hash(self, file_path: str) -> str:
+        """
+        Read a file from disk and generate its SHA-256 hash.
 
-        file_content_texts = [
-            document.page_content
-            for document in file_content
-        ]
+        Args:
+            file_path: Path to the file
 
-        file_content_metadatas = [
-            document.metadata
-            for document in file_content
-        ]
+        Returns:
+            str: Hexadecimal hash of the file content
+        """
+        try:
+            if not os.path.exists(file_path):
+                logger.warning(f"File not found for hashing: {file_path}")
+                return ""
 
-        # Improved splitter with paragraph and sentence awareness
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=overlap_size,
-            separators=["\n\n", "\n"], # favors paragraphs
-            length_function=len,
-            is_separator_regex=False
-        )
+            # Create hash object
+            file_hash = hashlib.sha256()
 
-        chunks = text_splitter.create_documents(
-            file_content_texts,
-            metadatas=file_content_metadatas
-        )
+            # Read and hash file in chunks
+            async with aiofiles.open(file_path, 'rb') as f:
+                chunk_size = 4096  # 4KB chunks
+                while chunk := await f.read(chunk_size):
+                    file_hash.update(chunk)
 
-        return chunks
+            return file_hash.hexdigest()
+        except Exception as e:
+            logger.error(f"Error reading file and generating hash: {e}")
+            return ""
