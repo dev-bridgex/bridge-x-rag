@@ -1,8 +1,8 @@
 from ..LLMProviderInterface import LLMProviderInterface
-from ..LLMEnums import CohereAPIv2Enum, DocumentTypeEnum
+from ..LLMEnums import CohereAPIv2Enum, CohereAPIv1Enum, DocumentTypeEnum
 import cohere
 from app.logging import get_logger
-from typing import List, Union
+from typing import List, Union, Optional
 
 class CohereProvider(LLMProviderInterface):
 
@@ -12,7 +12,9 @@ class CohereProvider(LLMProviderInterface):
         cohere_api_version: int = 1,
         default_input_max_characters: int = 1000,
         default_generation_max_output_tokens: int = 1000,
-        default_generation_temperature: float = 0.1
+        default_generation_temperature: float = 0.1,
+        default_image_description_max_output_tokens: int = 150,
+        default_image_description_temperature: float = 0.5
         ) -> None:
 
         self.api_key = api_key
@@ -20,16 +22,21 @@ class CohereProvider(LLMProviderInterface):
         self.default_input_max_characters = default_input_max_characters
         self.default_generation_max_output_tokens = default_generation_max_output_tokens
         self.default_generation_temperature = default_generation_temperature
+        self.default_image_description_max_output_tokens = default_image_description_max_output_tokens
+        self.default_image_description_temperature = default_image_description_temperature
 
         self.generation_model_id = None
 
         self.embedding_model_id = None
         self.embedding_size = None
-
+        self.enums = CohereAPIv2Enum if cohere_api_version == 2 else CohereAPIv1Enum
         self.cohere_api_version = cohere_api_version
 
-        self.client_v1 = cohere.Client(api_key=self.api_key) if cohere_api_version == 1 else None
-        self.client_v2 = cohere.ClientV2(api_key=self.api_key) if cohere_api_version == 2 else None
+        # Initialize async clients
+        if cohere_api_version == 1:
+            self.client = cohere.AsyncClient(api_key=self.api_key)
+        else:
+            self.client = cohere.AsyncClientV2(api_key=self.api_key)
 
         self.logger = get_logger(__name__)
 
@@ -42,17 +49,17 @@ class CohereProvider(LLMProviderInterface):
         self.embedding_size = embedding_size
 
     def process_text(self, text: str) -> str:
-        return text[: self.default_input_max_characters].strip()
+        return text[: self.default_input_max_characters].replace("\n", " ").strip()
 
-    def construct_pompt(self, prompt: str, role: str):
+    def construct_prompt(self, prompt: str, role: str):
         return {
             "role": role,
             "content": self.process_text(prompt)
         }
 
-    def generate_text(self, prompt: str, chat_history: list = [], max_output_tokens: int = None, temperature: float = None):
-
-        if not self.client_v1 or not self.client_v2:
+    async def generate_text(self, prompt: str, chat_history: list = [], max_output_tokens: int = None, temperature: float = None):
+        """Generate text from a prompt asynchronously"""
+        if not self.client:
             self.logger.error("Cohere client was not set")
             return None
 
@@ -63,43 +70,48 @@ class CohereProvider(LLMProviderInterface):
         max_output_tokens = max_output_tokens if max_output_tokens else self.default_generation_max_output_tokens
         temperature = temperature if temperature else self.default_generation_temperature
 
-        if self.cohere_api_version == 1:
-            response = self.client_v1.chat(
-                model = self.generation_model_id,
-                chat_history = chat_history,
-                message = self.process_text(prompt),
-                temperature = temperature,
-                max_tokens = max_output_tokens
-            )
+        try:
+            if self.cohere_api_version == 1:
+                response = await self.client.chat(
+                    model=self.generation_model_id,
+                    chat_history=chat_history,
+                    message=self.process_text(prompt),
+                    temperature=temperature,
+                    max_tokens=max_output_tokens
+                )
 
-            if not response or not response.text:
-                return None
-
-            return response.text
-
-        else:
-            chat_history.append(
-                self.construct_pompt(prompt=prompt, role=CohereAPIv2Enum.USER.value)
-            )
-
-            response = self.client_v2.chat(
-                model = self.generation_model_id,
-                messages = chat_history,
-                temperature = temperature,
-                max_tokens = max_output_tokens
-            )
-
-            if not response or not response.message or not response.message.content \
-                or len(response.message.content) == 0 or not response.message.content[0].text:
-
+                if not response or not response.text:
+                    self.logger.error("Error while generating text with Cohere")
                     return None
 
-            return response.message.content[0].text
+                return response.text
+            else:
+                # Create a copy of chat history to avoid modifying the original
+                chat_messages = chat_history.copy()
+                chat_messages.append(
+                    self.construct_prompt(prompt=prompt, role=CohereAPIv2Enum.USER.value)
+                )
 
+                response = await self.client.chat(
+                    model=self.generation_model_id,
+                    messages=chat_messages,
+                    temperature=temperature,
+                    max_tokens=max_output_tokens
+                )
 
-    def embed_text(self, text: Union[str, List[str]], document_type: str = None):
+                if not response or not response.message or not response.message.content \
+                    or len(response.message.content) == 0 or not response.message.content[0].text:
+                    self.logger.error("Error while generating text with Cohere")
+                    return None
 
-        if not self.client_v1 and not self.client_v2:
+                return response.message.content[0].text
+        except Exception as e:
+            self.logger.error(f"Error in text generation with Cohere: {str(e)}")
+            return None
+
+    async def embed_text(self, text: Union[str, List[str]], document_type: str = None):
+        """Embed text asynchronously"""
+        if not self.client:
             self.logger.error("Cohere client was not set")
             return None
 
@@ -107,27 +119,34 @@ class CohereProvider(LLMProviderInterface):
             self.logger.error("Embedding model for Cohere was not set")
             return None
 
-        input_type = CohereAPIv2Enum.InputTypes.value.DOCUMENT.value
-        if document_type == DocumentTypeEnum.QUERY:
-            input_type = CohereAPIv2Enum.InputTypes.value.QUERY.value
+        try:
+            input_type = CohereAPIv2Enum.InputTypes.value.DOCUMENT.value
+            texts_to_embed = []
 
-        if self.cohere_api_version == 1:
-            response = self.client_v1.embed(
-                model = self.embedding_model_id,
-                texts = [ self.process_text(text) for text in text],
-                input_type = input_type,
-                embedding_types = ['float']
+            if document_type == DocumentTypeEnum.DOCUMENT.value:
+                texts_to_embed = [self.process_text(t) for t in text]
+
+            if document_type == DocumentTypeEnum.QUERY.value:
+                input_type = CohereAPIv2Enum.InputTypes.value.QUERY.value
+                texts_to_embed = [self.process_text(text)]
+
+            response = await self.client.embed(
+                model=self.embedding_model_id,
+                texts=texts_to_embed,
+                input_type=input_type,
+                embedding_types=['float']
             )
-        else:
-            response = self.client_v2.embed(
-                model = self.embedding_model_id,
-                texts = [ self.process_text(text) for text in text ],
-                input_type = input_type,
-                embedding_types = ['float']
-            )
 
+            if not response or not response.embeddings or not response.embeddings.float_:
+                self.logger.error("Error while embedding text with Cohere")
+                return None
 
-        if not response or not response.embeddings or not response.embeddings.float_:
-            self.logger.error("Error while embedding text with Cohere")
+            return [float_embedding for float_embedding in response.embeddings.float_]
+        except Exception as e:
+            self.logger.error(f"Error in text embedding with Cohere: {str(e)}")
+            return None
 
-        return [ float_embedding for float_embedding in response.embeddings.float_]
+    async def generate_image_description(self, image_bytes: bytes, prompt_text: str = "Describe this image in detail.", max_output_tokens: Optional[int] = None, temperature: Optional[float] = None) -> Optional[str]:
+        """Generate image description asynchronously"""
+        self.logger.error("Image description is not supported for Cohere")
+        raise NotImplementedError("Image description is not supported for Cohere")
