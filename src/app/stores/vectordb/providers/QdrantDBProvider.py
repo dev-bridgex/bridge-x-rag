@@ -9,6 +9,7 @@ from qdrant_client.http.models import (
 )
 from app.stores.vectordb.VectorDBProviderInterface import VectorDBProviderInterface
 from app.stores.vectordb.VectorDBEnums import DistanceMethodEnum
+from app.models.db_schemas.data_chunk import RetrievedDocument
 from app.logging import get_logger
 # from logging import getLogger
 from typing import Optional, List, Union, Dict, Any
@@ -152,6 +153,21 @@ class QdrantDBProvider(VectorDBProviderInterface):
         uuid_bytes = uuid.UUID(uuid_str).bytes
         oid_bytes = uuid_bytes[:12]
         return ObjectId(oid_bytes)
+
+    def _is_valid_uuid(self, uuid_str: str) -> bool:
+        """Check if a string is a valid UUID.
+
+        Args:
+            uuid_str: String to check
+
+        Returns:
+            bool: True if the string is a valid UUID, False otherwise
+        """
+        try:
+            uuid.UUID(uuid_str)
+            return True
+        except (ValueError, AttributeError, TypeError):
+            return False
 
     def _normalize_id(self, id_value: Any) -> Union[str, int]:
         """Normalize ID to a format compatible with Qdrant while maintaining consistency with MongoDB and PostgreSQL.
@@ -460,17 +476,17 @@ class QdrantDBProvider(VectorDBProviderInterface):
                                limit: int = 5,
                                score_threshold: Optional[float] = None,
                                query_filter: Optional[Filter] = None # Use imported Filter
-                               ) -> List[Dict[str, Any]] | None:
+                               ) -> List[RetrievedDocument] | None:
 
-        """Searches asynchronously. Returns list of dicts formatted for SearchResult schema.
+        """Searches asynchronously. Returns list of RetrievedDocument objects.
 
-        Returns a list of dictionaries with the following keys:
-        - id: The ID of the point in Qdrant
-        - text: The text content of the point
+        Returns a list of RetrievedDocument objects with the following attributes:
+        - text: The text content of the document
         - score: The similarity score
-        - metadata: A dictionary of metadata associated with the point
+        - metadata: A dictionary of metadata associated with the document
 
-        This format matches what's expected by the SearchResult schema in the API.
+        This format is consistent with the DataChunk schema and makes it easier to work with
+        retrieved documents throughout the application.
         """
         await self._check_connection()
         self.logger.debug(f"Async searching collection '{collection_name}' (limit={limit}, threshold={score_threshold}).")
@@ -495,14 +511,18 @@ class QdrantDBProvider(VectorDBProviderInterface):
                 self.logger.debug(f"No results found for search in '{collection_name}'.")
                 return None
 
-            # Return results in the format expected by SearchResult schema
+            # Return results as RetrievedDocument objects
             return [
-                {
-                    "id": str(point.id),
-                    "text": point.payload.get("text", ""),
-                    "score": point.score,
-                    "metadata": {k: v for k, v in point.payload.items() if k != "text"}
-                }
+                RetrievedDocument(
+                    text=point.payload.get("text", ""),
+                    score=point.score,
+                    metadata={
+                        # Convert Qdrant ID back to MongoDB ObjectId format
+                        "id": str(self.uuid_to_objectid(str(point.id))) if self._is_valid_uuid(str(point.id)) else str(point.id),
+                        # Include all other metadata fields
+                        **{k: v for k, v in point.payload.items() if k != "text"}
+                    }
+                )
                 for point in results.points
             ]
 
@@ -558,7 +578,7 @@ class QdrantDBProvider(VectorDBProviderInterface):
             return False
 
 
-    async def search_by_metadata(self, collection_name: str, filter_dict: Dict[str, Any], limit: int = 10) -> List[Dict[str, Any]] | None:
+    async def search_by_metadata(self, collection_name: str, filter_dict: Dict[str, Any], limit: int = 10) -> List[RetrievedDocument] | None:
         """Search for records in a collection based on metadata filter
 
         Args:
@@ -567,7 +587,7 @@ class QdrantDBProvider(VectorDBProviderInterface):
             limit: Maximum number of results to return
 
         Returns:
-            List: List of matching records or None if error/no results
+            List[RetrievedDocument]: List of matching records as RetrievedDocument objects or None if error/no results
         """
         await self._check_connection()
 
@@ -602,13 +622,18 @@ class QdrantDBProvider(VectorDBProviderInterface):
                 self.logger.debug(f"No results found for metadata search in '{collection_name}'")
                 return None
 
-            # Convert results to a list of dictionaries
+            # Convert results to a list of RetrievedDocument objects
             return [
-                {
-                    "id": str(point.id),
-                    "text": point.payload.get("text", ""),
-                    "metadata": {k: v for k, v in point.payload.items() if k != "text"}
-                }
+                RetrievedDocument(
+                    text=point.payload.get("text", ""),
+                    score=1.0,  # No score in metadata search, default to 1.0
+                    metadata={
+                        # Convert Qdrant ID back to MongoDB ObjectId format
+                        "id": str(self.uuid_to_objectid(str(point.id))) if self._is_valid_uuid(str(point.id)) else str(point.id),
+                        # Include all other metadata fields
+                        **{k: v for k, v in point.payload.items() if k != "text"}
+                    }
+                )
                 for point in results[0]
             ]
 
@@ -616,7 +641,7 @@ class QdrantDBProvider(VectorDBProviderInterface):
             self.logger.error(f"Error searching by metadata in collection '{collection_name}': {e}", exc_info=True)
             return None
 
-    async def batch_search_by_metadata(self, collection_name: str, filter_dicts: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    async def batch_search_by_metadata(self, collection_name: str, filter_dicts: List[Dict[str, Any]]) -> Dict[str, List[RetrievedDocument]]:
         """Search for records in a collection based on multiple metadata filters
 
         This is more efficient than calling search_by_metadata multiple times when checking
@@ -627,7 +652,7 @@ class QdrantDBProvider(VectorDBProviderInterface):
             filter_dicts: List of dictionaries, each containing metadata key-value pairs to filter by
 
         Returns:
-            Dict: Dictionary mapping filter keys to lists of matching records
+            Dict[str, List[RetrievedDocument]]: Dictionary mapping filter keys to lists of matching records as RetrievedDocument objects
                   Keys are generated by concatenating the filter values
         """
         await self._check_connection()
@@ -675,13 +700,18 @@ class QdrantDBProvider(VectorDBProviderInterface):
                     try:
                         result = await task
                         if result and result[0]:
-                            # Convert results to a list of dictionaries
+                            # Convert results to a list of RetrievedDocument objects
                             results[filter_key] = [
-                                {
-                                    "id": str(point.id),
-                                    "text": point.payload.get("text", ""),
-                                    "metadata": {k: v for k, v in point.payload.items() if k != "text"}
-                                }
+                                RetrievedDocument(
+                                    text=point.payload.get("text", ""),
+                                    score=1.0,  # No score in metadata search, default to 1.0
+                                    metadata={
+                                        # Convert Qdrant ID back to MongoDB ObjectId format
+                                        "id": str(self.uuid_to_objectid(str(point.id))) if self._is_valid_uuid(str(point.id)) else str(point.id),
+                                        # Include all other metadata fields
+                                        **{k: v for k, v in point.payload.items() if k != "text"}
+                                    }
+                                )
                                 for point in result[0]
                             ]
                         else:

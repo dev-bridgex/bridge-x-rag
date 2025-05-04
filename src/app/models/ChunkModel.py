@@ -1,9 +1,10 @@
 from .BaseDataModel import BaseDataModel
 from .db_schemas import DataChunk
+from .db_schemas.data_chunk import RetrievedDocument
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from .enums.DataBaseEnum import DataBaseEnum
 from bson.objectid import ObjectId
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from app.logging import get_logger
 
 logger = get_logger(__name__)
@@ -109,3 +110,88 @@ class ChunkModel(BaseDataModel[DataChunk]):
         chunks_count = await self.count_documents({"chunk_knowledge_base_id": kb_id})
 
         return chunks_count
+
+
+
+    async def search_text(self, knowledge_base_id: str, query: str, limit: int = 10) -> List[RetrievedDocument]:
+        """
+        Perform full-text search using MongoDB's text search capabilities
+
+        Args:
+            knowledge_base_id: ID of the knowledge base to search in
+            query: The search query
+            limit: Maximum number of results to return
+
+        Returns:
+            List of RetrievedDocument objects
+        """
+        try:
+            # Convert string ID to ObjectId if needed
+            kb_id = ObjectId(knowledge_base_id) if isinstance(knowledge_base_id, str) else knowledge_base_id
+
+            # Clean and prepare the query
+            clean_query = query.strip()
+
+            # Log the search attempt
+            logger.debug(f"Performing MongoDB text search with query: '{clean_query}'")
+
+            # Perform text search in MongoDB with improved options
+            pipeline = [
+                {
+                    "$match": {
+                        "$and": [
+                            {"chunk_knowledge_base_id": kb_id},
+                            {"$text": {
+                                "$search": clean_query,
+                                "$caseSensitive": False,
+                                "$diacriticSensitive": False
+                            }}
+                        ]
+                    }
+                },
+                {
+                    "$project": {
+                        "chunk_text": 1,
+                        "metadata": 1,
+                        "chunk_asset_id": 1,
+                        "chunk_order": 1,
+                        "score": {"$meta": "textScore"}
+                    }
+                },
+                {"$sort": {"score": -1}},
+                {"$limit": limit}
+            ]
+
+            cursor = self.collection.aggregate(pipeline)
+
+            # Convert MongoDB documents to RetrievedDocument objects
+            retrieved_docs = []
+            async for doc in cursor:
+                # Create metadata dictionary
+                metadata = {
+                    "id": str(doc.get("_id")),
+                    "asset_id": str(doc.get("chunk_asset_id", "")),
+                    "knowledge_base_id": str(knowledge_base_id),
+                    "chunk_order": doc.get("chunk_order", 0)
+                }
+
+                # Add any existing metadata from the document's metadata field
+                if "metadata" in doc and isinstance(doc["metadata"], dict):
+                    metadata.update(doc["metadata"])
+
+                retrieved_docs.append(RetrievedDocument(
+                    text=doc.get("chunk_text", ""),
+                    metadata=metadata,
+                    score=doc.get("score", 0.0)
+                ))
+
+            # Log the results
+            if retrieved_docs:
+                logger.info(f"MongoDB text search found {len(retrieved_docs)} documents for query: '{clean_query}'")
+            else:
+                logger.warning(f"MongoDB text search found no results for query: '{clean_query}'")
+
+            return retrieved_docs
+        except Exception as e:
+            logger.error(f"Error performing MongoDB text search: {str(e)}")
+            return []
