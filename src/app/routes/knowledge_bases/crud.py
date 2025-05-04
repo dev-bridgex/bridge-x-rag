@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.db.mongodb import get_database
 from app.logging import get_logger
-from app.controllers import NLPController, KnowledgeBaseController
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import KnowledgeBaseModel
+from app.controllers import KnowledgeBaseController, NLPController
+from app.dependencies import get_database, get_knowledge_base_model, get_knowledge_base_controller, get_nlp_controller
 from .service import KnowledgeBaseService
-from app.dependencies import get_knowledge_base_model, get_knowledge_base_controller, get_nlp_controller
 from .schemas import (
     KnowledgeBaseCreate, KnowledgeBaseUpdate, PaginatedKnowledgeBaseListResponse,
     KnowledgeBaseDetailResponse, KnowledgeBaseCreateResponse, KnowledgeBaseUpdateResponse,
@@ -122,7 +121,7 @@ async def get_knowledge_base(
     )
 
 
-@router.put("/{knowledge_base_id}",
+@router.patch("/{knowledge_base_id}",
           response_model=KnowledgeBaseUpdateResponse,
           description="Update a knowledge base")
 async def update_knowledge_base(

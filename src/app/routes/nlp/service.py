@@ -1,13 +1,14 @@
 import asyncio
 from app.models import KnowledgeBaseModel, ChunkModel, AssetModel
 from app.models.db_schemas import KnowledgeBase, Asset
+from app.models.db_schemas.data_chunk import RetrievedDocument
 from app.controllers import NLPController
 from fastapi import Request, status, HTTPException
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List, Dict, Any, Tuple
 from app.logging import get_logger
 from tqdm.auto import tqdm
-from app.exception_handlers import raise_http_exception, raise_knowledge_base_not_found, raise_asset_not_found, raise_vector_db_error, raise_search_error
+from app.exception_handlers import raise_http_exception, raise_knowledge_base_not_found, raise_asset_not_found, raise_vector_db_error
 from app.models.enums.ErrorTypes import ErrorType
 
 logger = get_logger(__name__)
@@ -359,52 +360,6 @@ class NLPService:
                 detail=error_msg
             )
 
-    async def search_collection(self, knowledge_base_id: str, query: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """Search a knowledge base's vector database collection
-
-        Args:
-            knowledge_base_id: The ID of the knowledge base to search
-            query: The search query text
-            limit: Maximum number of results to return (default: 5)
-
-        Returns:
-            A list of search results, each containing the chunk text, metadata, and similarity score
-
-        Raises:
-            HTTPException: If the knowledge base is not found, the collection doesn't exist, or search fails"""
-        try:
-            # Validate knowledge base
-            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
-
-            # Check if collection exists
-            collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
-
-            if not collection_exists:
-                raise_vector_db_error(f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.", status_code=status.HTTP_404_NOT_FOUND)
-
-            # Perform search
-            results = await self.nlp_controller.search_vector_db(
-                knowledge_base=knowledge_base,
-                query=query,
-                limit=limit
-            )
-
-            if not results:
-                raise_search_error("Search failed or returned no results")
-
-            return results
-        except HTTPException:
-            # Re-raise HTTP exceptions directly
-            raise
-        except Exception as e:
-            # Log and convert other exceptions to HTTP exceptions
-            error_msg = f"Error searching collection for knowledge base '{knowledge_base_id}': {str(e)}"
-            logger.error(error_msg)
-            raise_http_exception(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
-                detail=error_msg
-            )
 
     async def delete_asset_from_index(self, knowledge_base_id: str, asset_id: str) -> Dict[str, Any]:
         """Delete a specific asset from the vector database
@@ -456,5 +411,152 @@ class NLPService:
             raise_http_exception(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 error_type=ErrorType.VECTOR_DB_ERROR.value,
+                detail=error_msg
+            )
+
+
+    async def search_collection(self, knowledge_base_id: str, query: str, limit: int = 5,
+                           use_semantic: bool = True, use_bm25: bool = False, use_hybrid: bool = False,
+                           use_query_rewriting: bool = True) -> List[RetrievedDocument]:
+        """Search a knowledge base's collection using different search strategies
+
+        Args:
+            knowledge_base_id: The ID of the knowledge base to search
+            query: The search query text
+            limit: Maximum number of results to return (default: 5)
+            use_semantic: Whether to use semantic search (vector search)
+            use_bm25: Whether to use BM25 search (full-text search)
+            use_hybrid: Whether to use hybrid search (combines semantic and BM25)
+            use_query_rewriting: Whether to rewrite the query for better retrieval
+
+        Returns:
+            A list of search results, each containing the chunk text, metadata, and similarity score
+
+        Raises:
+            HTTPException: If the knowledge base is not found, the collection doesn't exist, or search fails"""
+        try:
+            # Validate knowledge base
+            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
+
+            # Ensure chunk model is initialized for BM25 and hybrid search
+            if use_bm25 or use_hybrid:
+                await self._ensure_chunk_model()
+
+                # Pass the chunk model to the NLPController if it's not already set
+                if not self.nlp_controller.chunk_model:
+                    self.nlp_controller.chunk_model = self.chunk_model
+
+            # Check if collection exists for semantic and hybrid search
+            if use_semantic or use_hybrid:
+                collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
+                if not collection_exists:
+                    raise_vector_db_error(f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.", status_code=status.HTTP_404_NOT_FOUND)
+
+            # Use the controller's search_knowledge_base method which handles query rewriting
+            results = await self.nlp_controller.search_knowledge_base(
+                knowledge_base=knowledge_base,
+                query=query,
+                limit=limit,
+                use_semantic=use_semantic,
+                use_bm25=use_bm25,
+                use_hybrid=use_hybrid,
+                use_query_rewriting=use_query_rewriting
+            )
+
+            # Handle the case when no results are found
+            if not results:
+                logger.warning(f"No search results found for query: '{query}' using search type: {use_hybrid and 'hybrid' or (use_bm25 and 'bm25' or 'semantic')}")
+                # Return an empty list instead of raising an error
+                return []
+
+            return results
+        except HTTPException:
+            # Re-raise HTTP exceptions directly
+            raise
+        except Exception as e:
+            # Log and convert other exceptions to HTTP exceptions
+            error_msg = f"Error searching collection for knowledge base '{knowledge_base_id}': {str(e)}"
+            logger.error(error_msg)
+            raise_http_exception(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
+                detail=error_msg
+            )
+
+
+    async def chat_with_knowledge_base(self, knowledge_base_id: str, query: str, history: List[Dict[str, str]] = None,
+                              use_rag: bool = True, use_hybrid: bool = True, limit: int = 5,
+                              use_query_rewriting: bool = True) -> Tuple[str, List[Dict[str, Any]]]:
+        """
+        Chat with a knowledge base using RAG or direct LLM generation
+
+        Args:
+            knowledge_base_id: The ID of the knowledge base to search in
+            query: The user's question
+            history: Previous chat history (list of role/content dictionaries)
+            use_rag: Whether to use RAG (retrieval) or just direct LLM generation
+            use_hybrid: Whether to use hybrid search (vector + text) or just vector search
+            limit: Maximum number of chunks to retrieve when using RAG
+            use_query_rewriting: Whether to rewrite the query for better retrieval
+
+        Returns:
+            Tuple containing:
+                - response: The generated response text
+                - sources: List of sources used to generate the response (empty if not using RAG)
+
+        Raises:
+            HTTPException: If the knowledge base is not found, the collection doesn't exist, or chat fails
+        """
+        try:
+            # Validate knowledge base
+            knowledge_base = await self.validate_knowledge_base(knowledge_base_id)
+
+            # Ensure chunk model is initialized for hybrid search
+            if use_rag and use_hybrid:
+                await self._ensure_chunk_model()
+
+                # Pass the chunk model to the NLPController if it's not already set
+                if not self.nlp_controller.chunk_model:
+                    self.nlp_controller.chunk_model = self.chunk_model
+
+            # If using RAG, check if collection exists
+            if use_rag:
+                collection_exists = await self.nlp_controller.is_collection_exists(knowledge_base=knowledge_base)
+                if not collection_exists:
+                    raise_vector_db_error(
+                        f"Vector database collection for knowledge base '{knowledge_base_id}' not found. Please index the knowledge base first.",
+                        status_code=status.HTTP_404_NOT_FOUND
+                    )
+
+            # Generate chat response
+            response, sources = await self.nlp_controller.chat_with_knowledge_base(
+                knowledge_base=knowledge_base,
+                query=query,
+                history=history,
+                use_rag=use_rag,
+                use_hybrid=use_hybrid,
+                limit=limit,
+                use_query_rewriting=use_query_rewriting
+            )
+
+            if not response:
+                raise_http_exception(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
+                    detail="Failed to generate a chat response"
+                )
+
+            return response, sources
+
+        except HTTPException:
+            # Re-raise HTTP exceptions directly
+            raise
+        except Exception as e:
+            # Log and convert other exceptions to HTTP exceptions
+            error_msg = f"Error generating chat response for knowledge base '{knowledge_base_id}': {str(e)}"
+            logger.error(error_msg)
+            raise_http_exception(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                error_type=ErrorType.VECTOR_DB_SEARCH_ERROR.value,
                 detail=error_msg
             )
