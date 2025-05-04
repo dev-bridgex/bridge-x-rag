@@ -12,6 +12,7 @@ class Asset(BaseModel):
     asset_size: int = Field(gt=0, default=None)
     asset_config: dict = Field(default=None)
     asset_pushed_at: Optional[datetime] = None
+    file_hash: str = Field(default="", description="Content hash of the file for deduplication")
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -29,9 +30,9 @@ class Asset(BaseModel):
             {
                 "key": [
                     ("asset_knowledge_base_id", 1),
-                    ("asset_name", 1)
+                    ("_id", 1)
                 ],
-                "name": "asset_knowledge_base_id_name_index_1",
+                "name": "asset_knowledge_base_id_id_index_1",
                 "unique": True
             }
         ]

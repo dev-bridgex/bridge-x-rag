@@ -1,28 +1,33 @@
 from fastapi import FastAPI, HTTPException
+from app.exception_handlers import http_exception_handler, validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from app.middleware import logging_middleware
+
+import logging
+from app.logging import setup_logging, get_logger
+
 from contextlib import asynccontextmanager
+from app.helpers.config import get_settings, init_vector_db_data_dir, init_files_dir
+from app.db.mongodb import connect_and_init_db, close_db_connection
+
+# Import LLM and Vector DB providers
+from app.stores.llm import LLMProviderFactory
+from app.stores.vectordb import VectorDBProviderFactory
+
+# Import NLP initialization utilities
+from app.utils.nlp_init import init_nlp_resources
+
+# Import routes
 from app.routes.base import base_router
 from app.routes.assets import asset_router
 from app.routes.knowledge_bases import knowledge_base_router
 from app.routes.nlp import nlp_router
 
-from app.helpers.config import get_settings, init_database_dir, init_files_dir
-from app.db.mongodb import connect_and_init_db, close_db_connection
-
-from app.logging import setup_logging, get_logger
-import logging
-from fastapi.middleware.cors import CORSMiddleware
-from app.middleware.logging_middleware import logging_middleware
-# from app.exception_handlers import http_exception_handler, validation_exception_handler
-
-from app.stores.llm import LLMProviderFactory
-from app.stores.vectordb import VectorDBProviderFactory
-
-from app.testing_vectordb import test_qdrant
 
 
 # Initialize application settings
-app_settings = get_settings()
+app_settings = get_settings()  # This now uses the global singleton instance
 
 # Set up logging first thing
 logger = setup_logging(log_level=logging.INFO)
@@ -33,9 +38,9 @@ async def lifespan(app: FastAPI):
     try:
         # Startup: Create files directory (will store projects in) in the assets directory
         files_dir = init_files_dir()
-        database_dir = init_database_dir()
+        vector_db_data_dir = init_vector_db_data_dir()
         module_logger.info(f"Files directory initialized at: {files_dir}")
-        module_logger.info(f"Database directory initialized at: {database_dir}")
+        module_logger.info(f"Database directory initialized at: {vector_db_data_dir}")
 
         # Startup: Connect to the database
         module_logger.info("Initializing database connection...")
@@ -56,16 +61,21 @@ async def lifespan(app: FastAPI):
             )
 
         # init Vector Db client
-
         app.vectordb_client = vectordb_provider_factory.create(
             provider = app_settings.VECTOR_DB_BACKEND
         )
 
+        # Store language settings for template parser
+        app.template_parser_settings = {
+            "primary_lang": app_settings.PRIMARY_LANG,
+            "default_lang": app_settings.DEFAULT_LANG
+        }
+
+        # Initialize NLP client
+        app.nlp_client = init_nlp_resources(app_settings)
+
         # Uses async context manager (__aenter__ / __aexit__) to connect to the vector db client
         async with app.vectordb_client:
-            # test vector db client
-            # await test_qdrant(app.vectordb_client)
-
             module_logger.info(f"Application startup complete: {app_settings.APP_NAME} v{app_settings.APP_VERSION}")
             yield  # This is where FastAPI serves requests
 
@@ -92,7 +102,7 @@ app = FastAPI(
 
 
 # Register exception handlers
-from app.exception_handlers import http_exception_handler, validation_exception_handler
+
 app.add_exception_handler(HTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 

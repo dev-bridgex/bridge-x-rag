@@ -1,4 +1,5 @@
 from .BaseController import BaseController
 from .KnowledgeBaseController import KnowledgeBaseController
-from .NLPController import NLPController
 from .AssetController import AssetController
+from .ProcessingController import ProcessingController
+from .NLPController import NLPController

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from app.models.db_schemas.data_chunk import RetrievedDocument
 
 
 class VectorDBProviderInterface(ABC):
@@ -67,9 +68,22 @@ class VectorDBProviderInterface(ABC):
         self,
         collection_name: str,
         vector: List[float],
-        limit: int = 5
-    ) -> List:
+        limit: int = 5,
+        score_threshold: Optional[float] = None,
+        query_filter: Optional[Any] = None
+    ) -> List[RetrievedDocument] | None:
+        """Search for records in a collection based on vector similarity
 
+        Args:
+            collection_name: Name of the collection to search in
+            vector: The query vector to search with
+            limit: Maximum number of results to return
+            score_threshold: Minimum similarity score threshold
+            query_filter: Optional filter to apply to the search
+
+        Returns:
+            List[RetrievedDocument]: List of matching records as RetrievedDocument objects
+        """
         pass
 
     @abstractmethod
@@ -95,7 +109,7 @@ class VectorDBProviderInterface(ABC):
         collection_name: str,
         filter_dict: Dict[str, Any],
         limit: int = 10
-    ) -> List:
+    ) -> List[RetrievedDocument] | None:
         """Search for records in a collection based on metadata filter
 
         Args:
@@ -104,7 +118,7 @@ class VectorDBProviderInterface(ABC):
             limit: Maximum number of results to return
 
         Returns:
-            List: List of matching records
+            List[RetrievedDocument]: List of matching records as RetrievedDocument objects
         """
         pass
 
@@ -113,7 +127,7 @@ class VectorDBProviderInterface(ABC):
         self,
         collection_name: str,
         filter_dicts: List[Dict[str, Any]]
-    ) -> Dict[str, List]:
+    ) -> Dict[str, List[RetrievedDocument]]:
         """Search for records in a collection based on multiple metadata filters
 
         This is more efficient than calling search_by_metadata multiple times when checking
@@ -124,7 +138,7 @@ class VectorDBProviderInterface(ABC):
             filter_dicts: List of dictionaries, each containing metadata key-value pairs to filter by
 
         Returns:
-            Dict: Dictionary mapping filter keys to lists of matching records
+            Dict[str, List[RetrievedDocument]]: Dictionary mapping filter keys to lists of matching records as RetrievedDocument objects
         """
         pass
 

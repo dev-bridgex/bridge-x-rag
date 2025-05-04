@@ -63,8 +63,8 @@ class AssetModel(BaseDataModel[Asset]):
             logger.debug(f"Error getting asset by ID: {e}")
             return None
 
-    async def get_asset_by_knowledge_base_and_name(self, knowledge_base_id, asset_name: str) -> Optional[Asset]:
-        """Get an asset by knowledge base ID and name
+    async def get_asset_by_knowledge_base_id_and_asset_id(self, knowledge_base_id, asset_id) -> Optional[Asset]:
+        """Get an asset by knowledge base ID and Asset ID
 
         Args:
             knowledge_base_id: The ID of the knowledge base (string or ObjectId)
@@ -76,12 +76,14 @@ class AssetModel(BaseDataModel[Asset]):
         try:
             # Convert string ID to ObjectId if needed
             kb_id = ObjectId(knowledge_base_id) if isinstance(knowledge_base_id, str) else knowledge_base_id
+            a_id = ObjectId(asset_id) if isinstance(asset_id, str) else asset_id
+
             return await self.find_one({
-                "asset_knowledge_base_id": kb_id,
-                "asset_name": asset_name
+                "_id": a_id,
+                "asset_knowledge_base_id": kb_id
             })
         except Exception as e:
-            logger.debug(f"Error getting asset by knowledge base and name: {e}")
+            logger.debug(f"Error getting asset by knowledge base and asset ID: {e}")
             return None
 
     async def get_all_knowledge_base_assets(self, knowledge_base_id, asset_type: str | None = None,
@@ -157,6 +159,29 @@ class AssetModel(BaseDataModel[Asset]):
         # Get updated asset
         updated_asset = await self.get_asset_by_id(asset_id=asset_id)
         return True, updated_asset
+
+    async def find_asset_by_hash(self, file_hash: str, knowledge_base_id) -> Optional[Asset]:
+        """Find an asset by its file hash in a specific knowledge base
+
+        Args:
+            file_hash: The SHA-256 hash of the file content
+            knowledge_base_id: The ID of the knowledge base to search in
+
+        Returns:
+            The asset if found, None otherwise
+        """
+        try:
+            # Convert string ID to ObjectId if needed
+            kb_id = ObjectId(knowledge_base_id) if isinstance(knowledge_base_id, str) else knowledge_base_id
+
+            # Find asset with matching hash in the specified knowledge base
+            return await self.find_one({
+                "file_hash": file_hash,
+                "asset_knowledge_base_id": kb_id
+            })
+        except Exception as e:
+            logger.debug(f"Error finding asset by hash: {e}")
+            return None
 
     async def delete_asset_cascade(self, asset_id) -> Tuple[bool, int]:
         """Delete an asset and all its related resources (chunks)"""

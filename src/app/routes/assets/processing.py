@@ -1,13 +1,16 @@
 from fastapi import APIRouter, Depends, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from app.db.mongodb import get_database
 from app.logging import get_logger
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models import KnowledgeBaseModel, AssetModel, ChunkModel
-from app.controllers import AssetController, KnowledgeBaseController, NLPController
+from app.controllers import KnowledgeBaseController, AssetController, ProcessingController, NLPController
+from app.dependencies import (
+    get_database, get_knowledge_base_model, get_asset_model, get_chunk_model,
+    get_knowledge_base_controller, get_asset_controller, get_processing_controller, get_nlp_controller
+)
 from .service import AssetService
 from .schemas import KnowledgeBaseProcessRequest, AssetProcessRequest, AssetProcessResponse
-from app.dependencies import get_knowledge_base_model, get_asset_model, get_chunk_model, get_asset_controller, get_knowledge_base_controller, get_nlp_controller
-# Response helpers have been removed - responses are now created directly
+
+
 
 logger = get_logger(__name__)
 
@@ -19,8 +22,9 @@ async def get_asset_service(
     knowledge_base_model: KnowledgeBaseModel = Depends(get_knowledge_base_model),
     asset_model: AssetModel = Depends(get_asset_model),
     chunk_model: ChunkModel = Depends(get_chunk_model),
-    asset_controller: AssetController = Depends(get_asset_controller),
     knowledge_base_controller: KnowledgeBaseController = Depends(get_knowledge_base_controller),
+    asset_controller: AssetController = Depends(get_asset_controller),
+    processing_controller: ProcessingController = Depends(get_processing_controller),
     nlp_controller: NLPController = Depends(get_nlp_controller)
 ):
     return AssetService(
@@ -28,8 +32,9 @@ async def get_asset_service(
         knowledge_base_model=knowledge_base_model,
         asset_model=asset_model,
         chunk_model=chunk_model,
-        asset_controller=asset_controller,
         knowledge_base_controller=knowledge_base_controller,
+        asset_controller=asset_controller,
+        processing_controller=processing_controller,
         nlp_controller=nlp_controller
     )
 
@@ -63,7 +68,7 @@ async def process_knowledge_base_assets(
     )
 
 
-@router.post("/process/{knowledge_base_id}/{asset_id}",
+@router.post("/process/{knowledge_base_id}/asset/{asset_id}",
            response_model=AssetProcessResponse,
            status_code=status.HTTP_200_OK,
            description="Process a specific asset by ID with customizable chunking parameters")
