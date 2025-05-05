@@ -41,7 +41,8 @@ def init_nlp_resources(app_settings):
             'wordnet',            # For lemmatization
             'averaged_perceptron_tagger',  # For POS tagging
             'maxent_ne_chunker',  # For named entity recognition
-            'words'               # For word lists
+            'words',               # For word lists
+            'punkt_tab'
         ]
         
         # Note: The following Arabic resources are not available in NLTK's standard download:

@@ -208,7 +208,8 @@ class NLPController(BaseController):
             try:
                 vectors = await self.embedding_client.embed_text(
                     text=texts,
-                    document_type=DocumentTypeEnum.DOCUMENT.value
+                    document_type=DocumentTypeEnum.DOCUMENT.value,
+                    batch_size=100  # Use Google's batch limit of 100
                 )
                 # Check if embeddings were generated successfully
                 if not vectors or len(vectors) == 0:
@@ -327,8 +328,11 @@ class NLPController(BaseController):
         collection_name = self.create_collection_name(knowledge_base_id=str(knowledge_base.id))
 
         # step2: generate text embedding vector
-        vectors =  await self.embedding_client.embed_text(text=query,
-                                                   document_type=DocumentTypeEnum.QUERY.value)
+        vectors =  await self.embedding_client.embed_text(
+            text=query,
+            document_type=DocumentTypeEnum.QUERY.value,
+            batch_size=100  # Use Google's batch limit of 100
+        )
 
         if not vectors or len(vectors) == 0:
             return None

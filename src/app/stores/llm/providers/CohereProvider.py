@@ -109,8 +109,18 @@ class CohereProvider(LLMProviderInterface):
             self.logger.error(f"Error in text generation with Cohere: {str(e)}")
             return None
 
-    async def embed_text(self, text: Union[str, List[str]], document_type: str = None):
-        """Embed text asynchronously"""
+    async def embed_text(self, text: Union[str, List[str]], document_type: str = None, batch_size: int = 100):
+        """
+        Embed text asynchronously
+
+        Args:
+            text: Text or list of texts to embed
+            document_type: Type of document (DOCUMENT or QUERY)
+            batch_size: Maximum number of texts to process in a single API call
+
+        Returns:
+            List of embedding vectors or None if embedding fails
+        """
         if not self.client:
             self.logger.error("Cohere client was not set")
             return None
@@ -130,6 +140,8 @@ class CohereProvider(LLMProviderInterface):
                 input_type = CohereAPIv2Enum.InputTypes.value.QUERY.value
                 texts_to_embed = [self.process_text(text)]
 
+            # Cohere handles batching internally, so we don't need to implement it ourselves
+            # The batch_size parameter is included for interface compatibility
             response = await self.client.embed(
                 model=self.embedding_model_id,
                 texts=texts_to_embed,

@@ -218,12 +218,29 @@ class GoogleProvider(LLMProviderInterface):
             return None
 
 
+    def _batch_texts(self, texts: List[str], batch_size: int = 100) -> List[List[str]]:
+        """
+        Split a list of texts into batches of specified size.
+
+        Args:
+            texts: List of texts to batch
+            batch_size: Maximum size of each batch (default: 100 for Google's API limit)
+
+        Returns:
+            List of batches, where each batch is a list of texts
+        """
+        return [texts[i:i + batch_size] for i in range(0, len(texts), batch_size)]
+
     async def embed_text(self,
                    text: Union[str, List[str]],
-                   document_type: Optional[DocumentTypeEnum] = None # Use DocumentTypeEnum
+                   document_type: Optional[DocumentTypeEnum] = None, # Use DocumentTypeEnum
+                   batch_size: int = 100
                    ) -> Optional[List[List[float]]]:
-        """Generates embeddings using the configured Google embedding model asynchronously."""
+        """
+        Generates embeddings using the configured Google embedding model asynchronously.
 
+        Handles batching for large input lists to comply with Google's 100-item batch limit.
+        """
         if not self._check_configuration(): return None
         if not self.embedding_model_id:
             self.logger.error("Embedding model for Google GenAI was not set.")
@@ -245,23 +262,56 @@ class GoogleProvider(LLMProviderInterface):
                  self.logger.warning("Input text list for embedding is empty after processing.")
                  return [] # Return empty list for empty input
 
-            # Generate embeddings using the async client
-            response = await self.client.aio.models.embed_content(
-                model=self.embedding_model_id,
-                contents=processed_texts,
-                config=types.EmbedContentConfig(
-                    task_type=task_type,
-                    output_dimensionality=self.embedding_size
-                )
-            )
+            # Check if we need to batch the requests
+            if len(processed_texts) > batch_size:
+                self.logger.info(f"Batching {len(processed_texts)} texts into batches of {batch_size} for Google GenAI embedding")
+                batches = self._batch_texts(processed_texts, batch_size)
 
-            # Extract embeddings from the response
-            if response and hasattr(response, 'embeddings'):
-                self.logger.info(f"Successfully generated {len(response.embeddings)} embeddings.")
-                return [ embedding.values for embedding in response.embeddings ]
+                # Process each batch and combine results
+                all_embeddings = []
+                for i, batch in enumerate(batches):
+                    self.logger.debug(f"Processing batch {i+1}/{len(batches)} with {len(batch)} texts")
+
+                    # Generate embeddings for this batch
+                    batch_response = await self.client.aio.models.embed_content(
+                        model=self.embedding_model_id,
+                        contents=batch,
+                        config=types.EmbedContentConfig(
+                            task_type=task_type,
+                            output_dimensionality=self.embedding_size
+                        )
+                    )
+
+                    # Extract embeddings from the batch response
+                    if batch_response and hasattr(batch_response, 'embeddings'):
+                        batch_embeddings = [embedding.values for embedding in batch_response.embeddings]
+                        all_embeddings.extend(batch_embeddings)
+                        self.logger.debug(f"Successfully generated {len(batch_embeddings)} embeddings in batch {i+1}")
+                    else:
+                        self.logger.error(f"Error in batch {i+1}: Empty or invalid response")
+                        return None
+
+                self.logger.info(f"Successfully generated {len(all_embeddings)} total embeddings across {len(batches)} batches")
+                return all_embeddings
             else:
-                self.logger.error("Error while embedding text with Google GenAI: Empty or invalid response")
-                return None
+                # For small requests, process directly without batching
+                response = await self.client.aio.models.embed_content(
+                    model=self.embedding_model_id,
+                    contents=processed_texts,
+                    config=types.EmbedContentConfig(
+                        task_type=task_type,
+                        output_dimensionality=self.embedding_size
+                    )
+                )
+
+                # Extract embeddings from the response
+                if response and hasattr(response, 'embeddings'):
+                    embeddings = [embedding.values for embedding in response.embeddings]
+                    self.logger.info(f"Successfully generated {len(embeddings)} embeddings.")
+                    return embeddings
+                else:
+                    self.logger.error("Error while embedding text with Google GenAI: Empty or invalid response")
+                    return None
 
         except Exception as e:
             self.logger.error(f"Error embedding text with Google GenAI: {e}")

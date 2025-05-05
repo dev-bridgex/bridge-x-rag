@@ -17,8 +17,18 @@ class LLMProviderInterface(ABC):
         pass
 
     @abstractmethod
-    async def embed_text(self, text: Union[str, List[str]], document_type: str = None) -> Optional[List[List[float]]]:
-        """Embed text asynchronously"""
+    async def embed_text(self, text: Union[str, List[str]], document_type: str = None, batch_size: int = 100) -> Optional[List[List[float]]]:
+        """
+        Embed text asynchronously
+
+        Args:
+            text: Text or list of texts to embed
+            document_type: Type of document (e.g., DOCUMENT, QUERY)
+            batch_size: Maximum number of texts to process in a single API call
+
+        Returns:
+            List of embedding vectors or None if embedding fails
+        """
         pass
 
     @abstractmethod
