@@ -172,7 +172,14 @@ cython_debug/
 /Vagrant/.Vagrant
 
 /src/.venv
-/data/certbot/
+# Deployment-related
+/deployment/certbot/
+/backups/
+/logs/
 
+# IDE
 .vscode/
+
+# Docker
+.docker/
 

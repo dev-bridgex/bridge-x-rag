@@ -127,6 +127,74 @@ The API is organized into the following groups:
    docker run -p 8000:8000 --env-file .env bridge-x-rag
    ```
 
+## Deployment
+
+The project includes comprehensive deployment configurations for both development and production environments.
+
+### Development Deployment
+
+For a quick development setup with Docker Compose:
+
+1. Create environment files from examples:
+   ```bash
+   cp src/.env.example src/.env
+   cp deployment/mongodb/.env.example deployment/mongodb/.env
+   ```
+
+2. Edit the environment files with your configuration
+
+3. Run the deployment script:
+   ```bash
+   ./deployment/scripts/deploy.sh dev
+   ```
+
+   Or manually with Docker Compose:
+   ```bash
+   docker-compose -f docker-compose.dev.yml up -d
+   ```
+
+### Production Deployment
+
+For a production deployment with SSL:
+
+1. Create environment files from examples:
+   ```bash
+   cp src/.env.example src/.env
+   cp deployment/mongodb/.env.example deployment/mongodb/.env
+   ```
+
+2. Edit the environment files with your configuration
+
+3. Set up SSL certificates with Let's Encrypt:
+   ```bash
+   # Update domains in init-letsencrypt.sh
+   chmod +x init-letsencrypt.sh
+   ./init-letsencrypt.sh
+   ```
+
+4. Run the deployment script:
+   ```bash
+   ./deployment/scripts/deploy.sh prod
+   ```
+
+   Or manually with Docker Compose:
+   ```bash
+   docker-compose -f docker-compose.prod.yml up -d
+   ```
+
+### Backup and Restore
+
+The project includes scripts for database backup:
+
+```bash
+# Create a backup
+./deployment/scripts/backup.sh
+
+# Backups are stored in the ./backups directory
+```
+
+For more detailed deployment instructions, see the [deployment README](deployment/README.md).
+
 ## Development
 
 ### Project Structure

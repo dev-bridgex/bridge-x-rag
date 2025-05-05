@@ -1,0 +1,43 @@
+[Unit]
+Description=Gunicorn instance to serve social-media-api FastAPI application
+After=network.target
+
+[Service]
+# Run the service as the `fastapi` user and group
+User=fastapi
+Group=fastapi
+
+# Set the working directory to the location of your application code
+WorkingDirectory=/home/fastapi/app/src/
+
+# Add the virtual environment's `bin` directory to the PATH
+Environment="PATH=/home/fastapi/app/src/.venv/bin"
+
+# Load environment variables from a file (database credentials, API keys)
+EnvironmentFile=/home/fastapi/.env
+
+# Command to start Gunicorn with Uvicorn workers
+ExecStart=/home/fastapi/app/src/.venv/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
+
+# Command to reload the service gracefully
+ExecReload=/bin/kill -s HUP $MAINPID
+
+# Automatically restart the service if it fails or crashes
+Restart=always
+
+# Use a mix of signals to stop the service
+KillMode=mixed
+
+# Timeout for stopping the service (5 seconds)
+TimeoutStopSec=5
+
+# Use a private /tmp directory for the service
+PrivateTmp=true
+
+[Install]
+# Start the service in multi-user mode
+WantedBy=multi-user.target
+
+
+
+
