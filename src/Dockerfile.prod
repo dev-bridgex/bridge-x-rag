@@ -1,0 +1,66 @@
+
+# Use multi-stage build to reduce final image size
+FROM ghcr.io/astral-sh/uv:latest AS uv
+
+FROM python:3.13-alpine3.21 AS builder
+
+# Add metadata
+LABEL maintainer="Abdullah Abaza <abdullahabaza96@gmail.com>"
+LABEL description="Bridge-X-RAG - A modular Retrieval-Augmented Generation backend"
+LABEL version="0.1.0"
+LABEL org.opencontainers.image.source="https://github.com/dev-bridgex/bridge-x-rag"
+
+
+# Set environment variables
+ENV USER=fastapi \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local \
+    NLTK_DATA=/home/fastapi/nltk_data
+
+# Install necessary packages and create non root user
+RUN apk add --no-cache curl netcat-openbsd && \
+    adduser -D -s /bin/sh $USER && \
+    mkdir -p /home/$USER/nltk_data
+
+# Copy uv from the previous stage
+COPY --from=uv /uv /uvx /bin/
+
+# Set working directory
+ENV APP_DIR=/home/$USER/src
+WORKDIR $APP_DIR
+
+# Copy dependency files
+COPY ./pyproject.toml ./uv.lock ./entrypoint.sh ${APP_DIR}/
+
+# Make entrypoint script executable
+RUN chmod +x ${APP_DIR}/entrypoint.sh
+
+# Install dependencies using uv cache
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+# Copy application code
+COPY ./app ${APP_DIR}/app
+
+# Sync the project again to ensure everything is up-to-date
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+# Download NLTK data
+RUN python -m nltk.downloader -d /home/$USER/nltk_data punkt stopwords wordnet averaged_perceptron_tagger maxent_ne_chunker words
+
+# Set Python path
+ENV PYTHONPATH=${APP_DIR}
+
+# Change ownership of the application directory and NLTK data
+RUN chown -R "$USER:$USER" $APP_DIR && \
+    chown -R "$USER:$USER" /home/$USER/nltk_data
+
+# Switch to the non-root user
+USER $USER
+
+ENTRYPOINT ["/home/fastapi/src/entrypoint.sh"]
+
+# Command to run the application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
