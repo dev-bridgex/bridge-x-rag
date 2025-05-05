@@ -56,6 +56,8 @@ services:
     image: nginx:stable-alpine
     container_name: nginx
     restart: unless-stopped
+    # This command ensures that Nginx periodically reloads its configuration (every 6 hours) to apply any changes,
+    # while also keeping the container running in the foreground by using "nginx -g 'daemon off;'".
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
     ports:
       - "80:80"
