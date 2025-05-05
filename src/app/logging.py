@@ -14,7 +14,7 @@ def setup_logging(log_level=logging.INFO, enable_file_logging=True):
     """
     # Create logs directory if it doesn't exist
     if enable_file_logging:
-        logs_dir = Path(__file__).parents[2] / "logs"
+        logs_dir = Path(__file__).parents[1] / "logs"
         logs_dir.mkdir(exist_ok=True)
         log_file = logs_dir / "app.log"
 
