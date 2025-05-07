@@ -18,8 +18,8 @@ class KnowledgeBase(BaseModel):
             raise ValueError('knowledge_base_name cannot be None')
 
         # Validate that the name contains only ASCII characters
-        if not value.isascii():
-            raise ValueError('knowledge_base_name must contain ASCII characters only')
+        # if not value.isascii():
+        #     raise ValueError('knowledge_base_name must contain ASCII characters only')
 
         # Validate that the name is not empty or just whitespace
         if not value.strip():
